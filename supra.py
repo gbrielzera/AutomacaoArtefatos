@@ -92,6 +92,33 @@ class SupravizioDocApp:
     # ==========================================================
     # LÓGICA DE EXTRAÇÃO DE DADOS
     # ==========================================================
+    def get_texto(self, node, tag, default=""):
+        child = node.find(tag)
+        if child is not None and child.text:
+            return child.text.strip()
+        return default
+
+    def extrair_propriedades_campos(self, root):
+        propriedades = {}
+
+        for prop in root.findall(".//CustomProperty"):
+            nome = self.get_texto(prop, "Name")
+            tabela = self.get_texto(prop, "TableName")
+
+            if not nome or not tabela:
+                continue
+
+            if nome not in propriedades:
+                propriedades[nome] = {
+                    "rotulo": self.get_texto(prop, "Text") or self.get_texto(prop, "Description") or nome,
+                    "descricao": self.get_texto(prop, "Description") or self.get_texto(prop, "Text") or nome,
+                    "tipo": self.get_texto(prop, "Type", "String"),
+                    "tabela": tabela,
+                    "coluna": self.get_texto(prop, "TableColumn"),
+                }
+
+        return propriedades
+
     def extrair_dados_xml(self):
         try:
             tree = ET.parse(self.xml_path)
@@ -104,6 +131,7 @@ class SupravizioDocApp:
             root = ET.fromstring(xml_content)
 
         dados = {"nome_fluxo": "", "servicos": [], "campos": [], "anexos": [], "scripts": []}
+        propriedades_campos = self.extrair_propriedades_campos(root)
 
         node_nome = root.find(".//NomeSubProcesso")
         if node_nome is not None and node_nome.text:
@@ -157,10 +185,14 @@ class SupravizioDocApp:
                         
                         if nome_custom is not None and nome_custom.text:
                             nome_c = nome_custom.text.strip()
-                            rot_txt = rotulo.text.strip() if (rotulo is not None and rotulo.text) else nome_c
+                            prop_campo = propriedades_campos.get(nome_c, {})
+                            rot_txt = rotulo.text.strip() if (rotulo is not None and rotulo.text) else prop_campo.get("rotulo", nome_c)
+                            desc_txt = prop_campo.get("descricao", rot_txt)
+                            tipo_txt = prop_campo.get("tipo", "String")
+                            tabela_nome = prop_campo.get("tabela", tabela_nome)
                             
                             if nome_c and nome_c not in campos_vistos:
-                                dados["campos"].append({"nome": nome_c, "rotulo": rot_txt, "tabela": tabela_nome})
+                                dados["campos"].append({"nome": nome_c, "rotulo": rot_txt, "descricao": desc_txt, "tipo": tipo_txt, "tabela": tabela_nome})
                                 campos_vistos.add(nome_c)
                                 
                             for tag_xml, nome_amigavel in mapa_scripts.items():
@@ -373,15 +405,15 @@ class SupravizioDocApp:
                     p_local.add_run(s_dict["local"]).bold = True
 
             if idx_servico != -1 and dados["servicos"]:
-                estilo_ancora_srv = doc.paragraphs[idx_servico].style
+                estilo_ancora_srv = doc.styles["Normal"]
                 for srv in reversed(dados["servicos"]):
                     doc.paragraphs[idx_servico].insert_paragraph_before(
-                        f"• Tipo: {srv['tipo']} | Serviço: {srv['nome']}", 
+                        f"- Tipo: {srv['tipo']} | Serviço: {srv['nome']}",
                         style=estilo_ancora_srv
                     )
 
             if idx_desc != -1 and desc:
-                estilo_ancora_desc = doc.paragraphs[idx_desc].style
+                estilo_ancora_desc = doc.styles["Normal"]
                 doc.paragraphs[idx_desc].insert_paragraph_before(desc, style=estilo_ancora_desc)
 
             if len(doc.tables) > 0:
@@ -390,8 +422,8 @@ class SupravizioDocApp:
                 for c in dados["campos"]:
                     row = t_campos.add_row()
                     row.cells[0].text = c["nome"]
-                    row.cells[1].text = c["rotulo"]
-                    row.cells[2].text = "String"
+                    row.cells[1].text = c.get("descricao", c["rotulo"])
+                    row.cells[2].text = c.get("tipo", "String")
                     row.cells[3].text = c["tabela"]
                     row.cells[4].text = "Sim"
 
