@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ModeloImportacaoXml>
+    <NomeSubProcesso>Fluxo com Gateway</NomeSubProcesso>
+    <Figuras>
+        <Figura>
+            <Gateway>
+                <Descricao>Aprovado?</Descricao>
+                <ExpressaoComparacaoDecision>if Formulario['STATUS'] == 'OK':
+    return True</ExpressaoComparacaoDecision>
+            </Gateway>
+        </Figura>
+    </Figuras>
+</ModeloImportacaoXml>

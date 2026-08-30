@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ModeloImportacaoXml>
+    <NomeSubProcesso>Fluxo Custom Property</NomeSubProcesso>
+    <CustomProperty>
+        <Name>CSC_TESTE</Name>
+        <TableName>CPE_CSC</TableName>
+        <Text>Rótulo CSC</Text>
+        <Description>Descrição CSC</Description>
+        <Type>Integer</Type>
+        <TableColumn>COL_CSC</TableColumn>
+    </CustomProperty>
+    <CustomProperty>
+        <Name>SEM_TABELA</Name>
+        <Text>Propriedade sem tabela</Text>
+        <Description>Não deve aparecer</Description>
+        <Type>String</Type>
+    </CustomProperty>
+    <Figuras>
+        <Figura>
+            <Atividade>
+                <Tipo>Tarefa</Tipo>
+                <Descricao>Preencher CSC</Descricao>
+                <Operacoes>
+                    <OperacaoAtividade>
+                        <Campos>
+                            <CampoPreenchimento>
+                                <NomeCustomizado>CSC_TESTE</NomeCustomizado>
+                                <FormaEdicaoWeb>Formulario</FormaEdicaoWeb>
+                            </CampoPreenchimento>
+                        </Campos>
+                    </OperacaoAtividade>
+                </Operacoes>
+            </Atividade>
+        </Figura>
+    </Figuras>
+</ModeloImportacaoXml>

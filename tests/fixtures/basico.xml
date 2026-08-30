@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ModeloImportacaoXml>
+    <NomeSubProcesso>Processo Basico Teste</NomeSubProcesso>
+    <SubProcesso>
+        <ClasseSubProcesso>
+            <RestricoesServicos>
+                <RestricaoServico>
+                    <ClasseServico>
+                        <Descricao>Solicitação</Descricao>
+                    </ClasseServico>
+                    <Servico>
+                        <Descricao>Serviço Teste</Descricao>
+                    </Servico>
+                </RestricaoServico>
+            </RestricoesServicos>
+        </ClasseSubProcesso>
+    </SubProcesso>
+    <CustomProperty>
+        <Name>CAMPO_TESTE</Name>
+        <TableName>CPE_TESTE</TableName>
+        <Text>Rótulo do Campo Teste</Text>
+        <Description>Descrição do Campo Teste</Description>
+        <Type>String</Type>
+        <TableColumn>COL1</TableColumn>
+    </CustomProperty>
+    <Figuras>
+        <Figura>
+            <Atividade>
+                <Tipo>Tarefa</Tipo>
+                <Descricao>Executar tarefa de teste</Descricao>
+                <Operacoes>
+                    <OperacaoAtividade>
+                        <Campos>
+                            <CampoPreenchimento>
+                                <NomeCustomizado>CAMPO_TESTE</NomeCustomizado>
+                                <Rotulo>Rótulo Campo</Rotulo>
+                                <FormaEdicaoWeb>Formulario</FormaEdicaoWeb>
+                                <ScriptModificado>import clr
+print('ok')</ScriptModificado>
+                            </CampoPreenchimento>
+                        </Campos>
+                    </OperacaoAtividade>
+                </Operacoes>
+                <EscopoClasseAnexo>
+                    <ClasseConfiguracao>
+                        <Descricao>Comprovante</Descricao>
+                        <Sigla>COMP</Sigla>
+                    </ClasseConfiguracao>
+                </EscopoClasseAnexo>
+            </Atividade>
+        </Figura>
+        <Figura>
+            <Atividade>
+                <Tipo>EventoFinal</Tipo>
+                <Descricao>Fim</Descricao>
+            </Atividade>
+        </Figura>
+    </Figuras>
+</ModeloImportacaoXml>

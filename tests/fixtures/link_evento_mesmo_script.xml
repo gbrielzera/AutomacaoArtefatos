@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ModeloImportacaoXml>
+    <NomeSubProcesso>Fluxo LinkInicial EventoInicial</NomeSubProcesso>
+    <Figuras>
+        <Figura>
+            <Atividade>
+                <Tipo>LinkInicial</Tipo>
+            </Atividade>
+            <OperacaoAtividade>
+                <Campos>
+                    <CampoPreenchimento>
+                        <NomeCustomizado>FORNECEDOR1</NomeCustomizado>
+                        <ScriptModificado>import clr
+Formulario['FORNECEDOR1'] = 1</ScriptModificado>
+                    </CampoPreenchimento>
+                </Campos>
+            </OperacaoAtividade>
+        </Figura>
+        <Figura>
+            <Atividade>
+                <Tipo>EventoInicial</Tipo>
+                <Descricao>Início</Descricao>
+                <Operacoes>
+                    <OperacaoAtividade>
+                        <Campos>
+                            <CampoPreenchimento>
+                                <NomeCustomizado>FORNECEDOR1</NomeCustomizado>
+                                <ScriptModificado>import clr
+Formulario['FORNECEDOR1'] = 1</ScriptModificado>
+                            </CampoPreenchimento>
+                        </Campos>
+                    </OperacaoAtividade>
+                </Operacoes>
+            </Atividade>
+        </Figura>
+    </Figuras>
+</ModeloImportacaoXml>
