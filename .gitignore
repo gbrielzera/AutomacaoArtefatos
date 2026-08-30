@@ -1,0 +1,50 @@
+# ==========================================
+# Pastas e Arquivos Locais (com base na imagem)
+# ==========================================
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Logs
+logs/
+*.log
+
+# Saídas de Teste e Arquivos Temporários
+Saída dos artefatos/
+XMLs para teste/
+
+# Arquivos temporários gerados pelo Microsoft Word ao abrir documentos
+~$*.docx
+~$*.doc
+
+# ==========================================
+# Ambientes Virtuais (Virtual Environments)
+# ==========================================
+venv/
+.venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+
+# ==========================================
+# Compilação e Executáveis (PyInstaller / CX_Freeze)
+# ==========================================
+build/
+dist/
+*.manifest
+*.spec
+
+# ==========================================
+# Configurações de IDEs e Editores
+# ==========================================
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# ==========================================
+# Arquivos de Sistema Operacional
+# ==========================================
+.DS_Store
+Thumbs.db
