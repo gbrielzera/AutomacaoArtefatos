@@ -9,6 +9,12 @@ __pycache__/
 logs/
 *.log
 
+# Configurações locais (histórico de Macroprocesso/Processo, últimos caminhos usados)
+config/
+
+# Testes
+.pytest_cache/
+
 # Saídas de Teste e Arquivos Temporários
 Saída dos artefatos/
 XMLs para teste/
@@ -48,3 +54,7 @@ dist/
 # ==========================================
 .DS_Store
 Thumbs.db
+
+CLAUDE.md
+.CLAUDE
+tests

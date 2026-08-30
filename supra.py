@@ -1,5 +1,5 @@
 import tkinter as tk
-from tkinter import filedialog, messagebox
+from tkinter import filedialog, messagebox, ttk
 import xml.etree.ElementTree as ET
 from docx import Document
 from docx.shared import Pt, RGBColor, Cm
@@ -14,8 +14,17 @@ from pygments.token import Token
 import os
 import re
 import sys
+import json
 import logging
 from datetime import datetime
+
+try:
+    from tkinterdnd2 import TkinterDnD, DND_FILES
+    DND_DISPONIVEL = True
+except ImportError:
+    # tkinterdnd2 é opcional: se não estiver instalado, o app cai para tk.Tk() normal
+    # e simplesmente não oferece arrastar-e-soltar (não deve travar por isso).
+    DND_DISPONIVEL = False
 
 
 def get_base_dir():
@@ -63,7 +72,413 @@ def setup_logger():
 
     return logger, handler
 
+
+def escrever_arquivo_log(linhas, sufixo):
+    """
+    Grava uma lista de linhas já formatadas em <base_dir>/logs/log_{sufixo}_{timestamp}.log.
+    Usada tanto para o log de cada geração de artefato quanto para o log de uma
+    exceção não tratada (sufixo "crash"), evitando duas implementações divergentes.
+    """
+    if not linhas:
+        return ""
+    try:
+        logs_dir = os.path.join(get_base_dir(), "logs")
+        os.makedirs(logs_dir, exist_ok=True)
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        log_path = os.path.join(logs_dir, f"log_{limpar_nome_arquivo(sufixo)}_{timestamp}.log")
+        with open(log_path, "w", encoding="utf-8") as f:
+            f.write("\n".join(linhas) + "\n")
+        return log_path
+    except Exception as e:
+        # Último recurso: se nem o log conseguiu ser gravado, não há mais para onde
+        # reportar além do console.
+        print(f"Não foi possível gravar o arquivo de log: {e}")
+        return ""
+
+
+def criar_manipulador_excecoes(logger, log_handler):
+    """
+    Cria um manipulador de exceções não tratadas, usável tanto como `sys.excepthook`
+    (exceções que escapam de tudo, ex.: durante __init__ antes da GUI existir) quanto
+    como `root.report_callback_exception` do Tkinter (exceções dentro de callbacks de
+    botão/diálogo durante o mainloop() — o Tk NÃO propaga essas para sys.excepthook,
+    por padrão só imprime no console e segue em frente sem deixar rastro).
+    Ambas têm a mesma assinatura (exc_type, exc_value, exc_tb), então uma função serve
+    para as duas. Sempre loga e grava um log de crash antes de avisar o usuário.
+    """
+    def manipulador(exc_type, exc_value, exc_tb):
+        if issubclass(exc_type, KeyboardInterrupt):
+            sys.__excepthook__(exc_type, exc_value, exc_tb)
+            return
+
+        logger.critical("Exceção não tratada", exc_info=(exc_type, exc_value, exc_tb))
+        log_path = escrever_arquivo_log(log_handler.drenar(), "crash")
+        try:
+            messagebox.showerror(
+                "Erro inesperado",
+                f"Ocorreu um erro inesperado e a operação foi interrompida:\n{exc_value}"
+                f"\n\nDetalhes em:\n{log_path}"
+            )
+        except Exception:
+            pass  # se nem a caixa de diálogo funcionar, o log já foi gravado
+
+    return manipulador
+
+
+def dividir_caminhos_dnd(data):
+    """
+    Faz o parsing de event.data de um drop do tkinterdnd2 SEM usar tk.splitlist.
+    tk.splitlist processa `data` como lista Tcl, onde `\\` é caractere de escape —
+    isso corrompe caminhos do Windows sem chaves (ex.: "C:\\pasta\\arquivo.xml" vira
+    "C:pastarquivo.xml", perdendo as barras). Aqui, caminhos entre chaves {...} são
+    tratados como um único item (podem conter espaço); fora delas, a separação é por
+    espaço — sem qualquer interpretação de barra invertida.
+    """
+    caminhos = []
+    atual = ""
+    dentro_chaves = False
+    for ch in data:
+        if ch == "{":
+            dentro_chaves = True
+            continue
+        if ch == "}":
+            dentro_chaves = False
+            continue
+        if ch == " " and not dentro_chaves:
+            if atual:
+                caminhos.append(atual)
+                atual = ""
+            continue
+        atual += ch
+    if atual:
+        caminhos.append(atual)
+    return caminhos
+
+
+def get_config_path():
+    return os.path.join(get_base_dir(), "config", "settings.json")
+
+
+def carregar_config(logger=None):
+    """
+    Lê o histórico salvo da última execução (Macroprocesso, Processo, caminhos).
+    Nunca lança: um arquivo ausente é o caso normal de primeira execução (sem aviso);
+    um arquivo corrompido/inacessível vira aviso no log e o app segue com config vazia.
+    """
+    caminho = get_config_path()
+    if not os.path.exists(caminho):
+        return {}
+    try:
+        with open(caminho, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception as e:
+        if logger:
+            logger.warning(f"Não foi possível ler o arquivo de configurações '{caminho}': {e}")
+        return {}
+
+
+def salvar_config(dados, logger=None):
+    """Grava o histórico em disco. Nunca lança: uma falha aqui não pode derrubar a geração."""
+    caminho = get_config_path()
+    try:
+        os.makedirs(os.path.dirname(caminho), exist_ok=True)
+        with open(caminho, "w", encoding="utf-8") as f:
+            json.dump(dados, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        if logger:
+            logger.warning(f"Não foi possível salvar o arquivo de configurações '{caminho}': {e}")
+
+
+# ==========================================================
+# LÓGICA DE EXTRAÇÃO DE DADOS (funções de módulo, testáveis sem GUI)
+# ==========================================================
+def get_texto(node, tag, default=""):
+    child = node.find(tag)
+    if child is not None and child.text:
+        return child.text.strip()
+    return default
+
+
+def extrair_propriedades_campos(root):
+    propriedades = {}
+
+    for prop in root.findall(".//CustomProperty"):
+        nome = get_texto(prop, "Name")
+        tabela = get_texto(prop, "TableName")
+
+        if not nome or not tabela:
+            continue
+
+        if nome not in propriedades:
+            propriedades[nome] = {
+                "rotulo": get_texto(prop, "Text") or get_texto(prop, "Description") or nome,
+                "descricao": get_texto(prop, "Description") or get_texto(prop, "Text") or nome,
+                "tipo": get_texto(prop, "Type", "String"),
+                "tabela": tabela,
+                "coluna": get_texto(prop, "TableColumn"),
+            }
+
+    return propriedades
+
+
+def ler_xml_root(xml_path):
+    try:
+        return ET.parse(xml_path).getroot()
+    except ET.ParseError:
+        with open(xml_path, 'r', encoding='utf-8-sig') as file:
+            xml_content = file.read().strip()
+        if not xml_content:
+            raise Exception("O arquivo XML selecionado está vazio.")
+        return ET.fromstring(xml_content)
+
+
+def extrair_processo_do_nome_arquivo(caminho_xml):
+    """
+    O Supravizio exporta o XML com o padrão:
+        "{Processo}_Versão_{N}_{NomeSubProcesso}"
+    O Processo pode conter hífens (ex.: "Financeiro - Serviços Gerais"), por isso
+    tudo que vem antes de "_Versão_{N}_" é considerado o Processo inteiro.
+    O Macroprocesso NÃO consta nem no nome do arquivo nem no XML.
+    Retorna (processo, subprocesso_do_nome); cada item pode ser None.
+    """
+    nome_base = os.path.splitext(os.path.basename(caminho_xml))[0]
+    nome_normalizado = re.sub(r"\s+", " ", nome_base.replace("_", " ")).strip()
+
+    match = re.match(
+        r"^(?P<processo>.+?)\s+Vers[aã]o\s+\d+\s*(?P<sub>.*)$",
+        nome_normalizado,
+        flags=re.IGNORECASE
+    )
+    if not match:
+        return None, None
+
+    processo = match.group("processo").strip(" -")
+    sub = match.group("sub").strip()
+    return (processo or None), (sub or None)
+
+
+def extrair_macroprocesso_do_xml(root):
+    """
+    Procura o Macroprocesso na árvore do XML. O Supravizio não exporta o nome do
+    macroprocesso no XML de fluxo (apenas a classe vazia
+    'Venki.Supravizio.Processo.MacroProcesso'), então na prática isto quase sempre
+    retorna None e o campo precisa ser preenchido manualmente.
+    """
+    for tag in ("MacroProcesso", "Macroprocesso", "NomeMacroProcesso", "ClasseMacroProcesso"):
+        for node in root.iter(tag):
+            if node.text and node.text.strip():
+                return node.text.strip()
+            desc = node.find("Descricao")
+            if desc is not None and desc.text and desc.text.strip():
+                return desc.text.strip()
+    return None
+
+
+def extrair_dados_xml(xml_path, logger):
+    logger.info(f"Iniciando extração de dados do XML: {xml_path}")
+    root = ler_xml_root(xml_path)
+
+    dados = {"nome_fluxo": "", "servicos": [], "campos": [], "anexos": [], "scripts": []}
+    propriedades_campos = extrair_propriedades_campos(root)
+
+    node_nome = root.find(".//NomeSubProcesso")
+    if node_nome is not None and node_nome.text:
+        dados["nome_fluxo"] = node_nome.text.strip()
+    else:
+        logger.warning("Não foi possível localizar a tag <NomeSubProcesso> no XML.")
+
+    # Dedup por (local, código): evita duplicar o mesmo script quando a MESMA atividade
+    # aparece repetida no diagrama (ex: um LinkInicial compartilhado entre várias páginas),
+    # mas preserva scripts com código idêntico que estejam em locais distintos (ex: o mesmo
+    # preenchimento de campo replicado no Evento Inicial e no Link Inicial).
+    scripts_vistos = set()
+
+    def registrar_script(local, sc_code):
+        chave = (local, sc_code)
+        if chave in scripts_vistos:
+            logger.debug(f"Script duplicado ignorado (mesma atividade repetida no diagrama): {local}")
+            return
+        scripts_vistos.add(chave)
+        dados["scripts"].append({"local": local, "codigo": sc_code})
+
+    servicos_vistos = set()
+
+    def coletar_servicos(restricoes):
+        """Lê pares (tipo, serviço) de nós <RestricaoServico>, ignorando entradas vazias."""
+        for rest in restricoes:
+            srv = rest.find("Servico")
+            tipo_txt = (
+                get_texto(rest, "ClasseServico/Descricao")
+                or (get_texto(srv, "ClasseServico/Descricao") if srv is not None else "")
+            )
+            nome_txt = get_texto(srv, "Descricao") if srv is not None else ""
+
+            if not tipo_txt and not nome_txt:
+                logger.warning(
+                    "Encontrada uma <RestricaoServico> sem Tipo e sem Descrição do serviço; "
+                    "entrada ignorada (o serviço não veio expandido no XML)."
+                )
+                continue
+
+            chave = f"{tipo_txt} - {nome_txt}"
+            if chave not in servicos_vistos:
+                servicos_vistos.add(chave)
+                dados["servicos"].append({"tipo": tipo_txt, "nome": nome_txt})
+
+    # Fonte autoritativa: os serviços do PRÓPRIO subprocesso (ClasseSubProcesso).
+    # Isto evita capturar serviços de subprocessos secundários apenas engatilhados,
+    # e funciona mesmo em fluxos sem LinkInicial.
+    coletar_servicos(root.findall(".//SubProcesso/ClasseSubProcesso/RestricoesServicos/RestricaoServico"))
+
+    if not dados["servicos"]:
+        logger.warning(
+            "Nenhum serviço em <SubProcesso/ClasseSubProcesso>; tentando o LinkInicial como alternativa."
+        )
+        for link_inicial in root.findall(".//Atividade[Tipo='LinkInicial']"):
+            for alvo in link_inicial.findall(".//ClasseAlvo"):
+                coletar_servicos(alvo.findall(".//RestricoesServicos/RestricaoServico"))
+
+    mapa_scripts = {
+        "ScriptModificado": "modificado",
+        "ScriptValidacao": "de validação",
+        "ScriptFormCarregado": "de formulário carregado",
+        "ScriptInicio": "de início",
+        "ScriptFim": "de fim",
+        "ScriptVolta": "de volta",
+        "ScriptEvento": "de evento",
+    }
+
+    # Scripts que ficam aninhados sob outro nó da atividade, e não como filho direto.
+    mapa_scripts_aninhados = {
+        "PapelResponsavel/PapelClasseNegocio/ScriptSelecaoAtores": "de seleção de atores (papel responsável)",
+        "PapelDestinatario/PapelClasseNegocio/ScriptSelecaoAtores": "de seleção de atores (papel destinatário)",
+    }
+
+    campos_vistos = set()
+    anexos_vistos = set()
+
+    for figura in root.findall(".//Figura"):
+        atividade = figura.find("Atividade")
+
+        if atividade is not None:
+            tag_tipo_atv = atividade.find("Tipo")
+            tipo_atv = tag_tipo_atv.text.strip() if (tag_tipo_atv is not None and tag_tipo_atv.text) else "Atividade"
+
+            # Nome real da tarefa (ex.: "Anexar comprovante de pagamento"), quando existir.
+            # Tipos sem rótulo próprio (LinkInicial, Gateway, etc.) caem no fallback do Tipo.
+            tag_desc_atv = atividade.find("Descricao")
+            descricao_atv = tag_desc_atv.text.strip() if (tag_desc_atv is not None and tag_desc_atv.text) else ""
+            if descricao_atv and descricao_atv != tipo_atv:
+                nome_atv = f"{descricao_atv} ({tipo_atv})"
+            else:
+                nome_atv = tipo_atv
+
+            # As operações do LinkInicial (evento de inicialização do fluxo) ficam em
+            # <Figura><OperacaoAtividade>, IRMÃO de <Atividade> e não dentro dela.
+            # Ler só atividade//OperacaoAtividade perdia esses scripts e campos.
+            operacoes = atividade.findall(".//OperacaoAtividade") + figura.findall("OperacaoAtividade")
+
+            for op in operacoes:
+                for campo in op.findall(".//CampoPreenchimento"):
+                    nome_custom = campo.find("./NomeCustomizado")
+                    rotulo = campo.find("./Rotulo")
+
+                    # Extrai a Tabela da Tag 'FormaEdicaoWeb' no nível do Campo (Corrigido)
+                    tabela_nome = "Formulário"
+                    form_edicao = campo.find("./FormaEdicaoWeb")
+                    if form_edicao is not None and form_edicao.text:
+                        if form_edicao.text.strip().lower() != "formulario":
+                            tabela_nome = form_edicao.text.strip()
+
+                    if nome_custom is not None and nome_custom.text:
+                        nome_c = nome_custom.text.strip()
+                        prop_campo = propriedades_campos.get(nome_c, {})
+                        rot_txt = rotulo.text.strip() if (rotulo is not None and rotulo.text) else prop_campo.get("rotulo", nome_c)
+                        desc_txt = prop_campo.get("descricao", rot_txt)
+                        tipo_txt = prop_campo.get("tipo", "String")
+                        tabela_nome = prop_campo.get("tabela", tabela_nome)
+
+                        if nome_c and nome_c not in campos_vistos:
+                            dados["campos"].append({"nome": nome_c, "rotulo": rot_txt, "descricao": desc_txt, "tipo": tipo_txt, "tabela": tabela_nome})
+                            campos_vistos.add(nome_c)
+
+                        for tag_xml, nome_amigavel in mapa_scripts.items():
+                            s_node = campo.find(tag_xml)
+                            if s_node is not None and s_node.text and s_node.text.strip():
+                                sc_code = s_node.text.strip()
+                                registrar_script(
+                                    f"Atividade: {nome_atv} | Script {nome_amigavel} no campo: {nome_c}",
+                                    sc_code
+                                )
+
+                for tag_xml, nome_amigavel in mapa_scripts.items():
+                    s_node = op.find(tag_xml)
+                    if s_node is not None and s_node.text and s_node.text.strip():
+                        sc_code = s_node.text.strip()
+                        registrar_script(
+                            f"Atividade: {nome_atv} | Script {nome_amigavel} da operação",
+                            sc_code
+                        )
+
+            for tag_xml, nome_amigavel in list(mapa_scripts.items()) + list(mapa_scripts_aninhados.items()):
+                s_node = atividade.find(tag_xml)
+                if s_node is not None and s_node.text and s_node.text.strip():
+                    sc_code = s_node.text.strip()
+                    registrar_script(
+                        f"Atividade: {nome_atv} | Script {nome_amigavel} da atividade",
+                        sc_code
+                    )
+
+            for vi in atividade.findall(".//ValoresInputs/ValorInput"):
+                expr_in = vi.find("ExpressaoValor")
+                if expr_in is not None and expr_in.text and expr_in.text.strip():
+                    nome_input = get_texto(vi, "CustomProperty/Name") or get_texto(vi, "Nome") or "input"
+                    registrar_script(
+                        f"Atividade: {nome_atv} | Expressão de valor do input: {nome_input}",
+                        expr_in.text.strip()
+                    )
+
+            for escopo in atividade.findall(".//EscopoClasseAnexo/ClasseConfiguracao"):
+                desc = escopo.find("./Descricao")
+                sigla = escopo.find("./Sigla")
+                if desc is not None and sigla is not None:
+                    d_txt = desc.text.strip() if desc.text else ""
+                    s_txt = sigla.text.strip() if sigla.text else ""
+                    if d_txt and s_txt and s_txt not in anexos_vistos:
+                        dados["anexos"].append({"nome": d_txt, "sigla": s_txt})
+                        anexos_vistos.add(s_txt)
+
+        gateway = figura.find("Gateway")
+        if gateway is not None:
+            tag_desc_gw = gateway.find("Descricao")
+            desc_gw = tag_desc_gw.text.strip() if (tag_desc_gw is not None and tag_desc_gw.text) else "Gateway"
+            expr = gateway.find("ExpressaoComparacaoDecision")
+
+            if expr is not None and expr.text and expr.text.strip():
+                sc_code = expr.text.strip()
+                registrar_script(
+                    f"Gateway de Decisão: {desc_gw} | Expressão de Decisão",
+                    sc_code
+                )
+
+    logger.info(
+        f"Extração concluída. nome_fluxo='{dados['nome_fluxo']}' | "
+        f"servicos={len(dados['servicos'])} | campos={len(dados['campos'])} | "
+        f"anexos={len(dados['anexos'])} | scripts={len(dados['scripts'])}"
+    )
+    if not dados["servicos"]:
+        logger.warning("Nenhum serviço associado foi encontrado no Link Inicial do fluxo.")
+    if not dados["campos"]:
+        logger.warning("Nenhum campo de preenchimento foi encontrado no fluxo.")
+    if not dados["scripts"]:
+        logger.warning("Nenhum script (IronPython) ou expressão de Gateway foi encontrado no fluxo.")
+
+    return dados
+
+
 class SupravizioDocApp:
+
+    TOTAL_ETAPAS = 6  # nº de estágios que _set_status percorre durante gerar_documento
 
     def __init__(self, root):
         self.root = root
@@ -76,6 +491,12 @@ class SupravizioDocApp:
         self.output_dir = ""
 
         self.logger, self.log_handler = setup_logger()
+
+        # Cobre exceções fora do try/except de gerar_documento: erros em callbacks de
+        # botão/diálogo durante o mainloop() (o Tk não propaga isso para sys.excepthook
+        # por padrão) e qualquer coisa que escape do __init__ antes da GUI existir.
+        manipulador_excecoes = criar_manipulador_excecoes(self.logger, self.log_handler)
+        self.root.report_callback_exception = manipulador_excecoes
 
         # Guarda o que foi preenchido automaticamente, para poder substituir esses valores
         # ao trocar de XML sem sobrescrever o que o usuário digitou à mão.
@@ -117,10 +538,21 @@ class SupravizioDocApp:
         frame_files = tk.Frame(root)
         frame_files.pack(pady=10, fill="x", padx=20)
 
-        self.btn_xml = tk.Button(frame_files, text="1. Selecionar XML do Fluxo", command=self.load_xml)
+        texto_btn_xml = "1. Selecionar XML do Fluxo"
+        if DND_DISPONIVEL:
+            texto_btn_xml += "  (ou arraste o arquivo aqui)"
+        self.btn_xml = tk.Button(frame_files, text=texto_btn_xml, command=self.load_xml)
         self.btn_xml.pack(fill="x", pady=2)
         self.lbl_xml = tk.Label(frame_files, text="Nenhum arquivo XML selecionado", fg="gray", anchor="w")
         self.lbl_xml.pack(fill="x", pady=(0, 10))
+        self._lbl_xml_bg_padrao = self.lbl_xml.cget("bg")
+
+        if DND_DISPONIVEL:
+            for widget in (self.btn_xml, self.lbl_xml):
+                widget.drop_target_register(DND_FILES)
+                widget.dnd_bind("<<DropEnter>>", self._ao_entrar_drag_xml)
+                widget.dnd_bind("<<DropLeave>>", self._ao_sair_drag_xml)
+                widget.dnd_bind("<<Drop>>", self._ao_soltar_xml)
 
         self.btn_template = tk.Button(frame_files, text="2. Selecionar Template DOCX", command=self.load_template)
         self.btn_template.pack(fill="x", pady=2)
@@ -133,10 +565,49 @@ class SupravizioDocApp:
         self.lbl_dir.pack(fill="x")
 
         self.btn_gerar = tk.Button(
-            root, text="Gerar Artefato DOCX", font=("Arial", 12, "bold"), 
+            root, text="Gerar Artefato DOCX", font=("Arial", 12, "bold"),
             bg="#4CAF50", fg="white", command=self.gerar_documento
         )
         self.btn_gerar.pack(pady=15, fill="x", padx=50)
+
+        # =========================
+        # STATUS / PROGRESSO
+        # =========================
+        self.lbl_status = tk.Label(root, text="", fg="gray", anchor="w")
+        self.lbl_status.pack(fill="x", padx=50)
+
+        self.progress = ttk.Progressbar(root, mode="determinate", maximum=self.TOTAL_ETAPAS)
+        self.progress.pack(fill="x", padx=50, pady=(0, 10))
+
+        # =========================
+        # HISTÓRICO DA ÚLTIMA EXECUÇÃO
+        # =========================
+        self.config = carregar_config(self.logger)
+
+        template_salvo = self.config.get("template_path", "")
+        if template_salvo and os.path.isfile(template_salvo):
+            self.template_path = template_salvo
+            self.lbl_template.config(text=os.path.basename(self.template_path), fg="black")
+
+        dir_salvo = self.config.get("output_dir", "")
+        if dir_salvo and os.path.isdir(dir_salvo):
+            self.output_dir = dir_salvo
+            self.lbl_dir.config(text=self.output_dir, fg="black")
+
+        # Passa pelo MESMO mecanismo de preenchimento inteligente que a detecção via XML
+        # usa: só entra se o campo estiver vazio (primeira abertura do app), nunca
+        # sobrescreve algo que o usuário já tenha digitado nesta sessão.
+        self.macro_auto = self.aplicar_valor_automatico(
+            self.entry_macro, self.config.get("macroprocesso", ""), self.macro_auto, "Macroprocesso"
+        )
+        self.proc_auto = self.aplicar_valor_automatico(
+            self.entry_proc, self.config.get("processo", ""), self.proc_auto, "Processo"
+        )
+
+    def _atualizar_config(self, **campos):
+        """Atualiza e persiste campos do histórico (nunca lança em caso de falha)."""
+        self.config.update(campos)
+        salvar_config(self.config, self.logger)
 
     # ==========================================================
     # LOG
@@ -144,73 +615,68 @@ class SupravizioDocApp:
     def gravar_log(self, nome_fluxo=""):
         """Grava um arquivo de log para a geração recém-concluída e esvazia o buffer."""
         linhas = self.log_handler.drenar()
-        if not linhas:
-            return ""
-        try:
-            logs_dir = os.path.join(get_base_dir(), "logs")
-            os.makedirs(logs_dir, exist_ok=True)
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            sufixo = limpar_nome_arquivo(nome_fluxo) if nome_fluxo else "Supravizio"
-            log_path = os.path.join(logs_dir, f"log_{sufixo}_{timestamp}.log")
-            with open(log_path, "w", encoding="utf-8") as f:
-                f.write("\n".join(linhas) + "\n")
-            return log_path
-        except Exception as e:
-            print(f"Não foi possível gravar o arquivo de log: {e}")
-            return ""
+        return escrever_arquivo_log(linhas, nome_fluxo if nome_fluxo else "Supravizio")
 
     # ==========================================================
     # FUNÇÕES DE INTERFACE
     # ==========================================================
     def load_xml(self):
-        self.xml_path = filedialog.askopenfilename(title="Selecionar XML", filetypes=[("XML", "*.xml")])
-        if self.xml_path:
+        caminho = filedialog.askopenfilename(
+            title="Selecionar XML",
+            filetypes=[("XML", "*.xml")],
+            initialdir=self.config.get("last_xml_dir") or None
+        )
+        if caminho:
+            self._definir_xml(caminho)
+
+    def _definir_xml(self, caminho):
+        """
+        Único ponto que efetivamente adota um caminho de XML como self.xml_path —
+        usado tanto pelo diálogo de seleção (load_xml) quanto pelo arrastar-e-soltar
+        (_ao_soltar_xml), para as duas formas passarem pela MESMA detecção automática.
+        """
+        if not caminho.lower().endswith(".xml"):
+            self.logger.warning(f"Arquivo descartado por não ser .xml: {caminho}")
+            messagebox.showwarning("Arquivo inválido", "Selecione (ou arraste) um arquivo .xml.")
+            return
+        if not os.path.isfile(caminho):
+            self.logger.warning(f"Caminho de XML não é um arquivo existente: {caminho}")
+            messagebox.showwarning("Arquivo inválido", f"Arquivo não encontrado:\n{caminho}")
+            return
+        try:
+            self.xml_path = caminho
             self.lbl_xml.config(text=os.path.basename(self.xml_path), fg="black")
             self.logger.info(f"XML selecionado: {self.xml_path}")
+            self._atualizar_config(last_xml_dir=os.path.dirname(self.xml_path))
             self.tentar_preencher_macro_processo()
+        except Exception as e:
+            self.logger.exception(f"Falha ao processar o XML selecionado '{caminho}': {e}")
+            messagebox.showerror("Erro ao ler XML", f"Não foi possível ler o arquivo selecionado:\n{e}")
+
+    # ==========================================================
+    # ARRASTAR E SOLTAR (tkinterdnd2, se disponível)
+    # ==========================================================
+    def _ao_entrar_drag_xml(self, event):
+        self.lbl_xml.config(bg="#E3F2FD")
+
+    def _ao_sair_drag_xml(self, event):
+        self.lbl_xml.config(bg=self._lbl_xml_bg_padrao)
+
+    def _ao_soltar_xml(self, event):
+        self.lbl_xml.config(bg=self._lbl_xml_bg_padrao)
+        caminhos = dividir_caminhos_dnd(event.data)
+        if not caminhos:
+            return
+        self._definir_xml(caminhos[0])
 
     # ==========================================================
     # DETECÇÃO AUTOMÁTICA DE PROCESSO / SUBPROCESSO
     # ==========================================================
     def extrair_processo_do_nome_arquivo(self, caminho_xml):
-        """
-        O Supravizio exporta o XML com o padrão:
-            "{Processo}_Versão_{N}_{NomeSubProcesso}"
-        O Processo pode conter hífens (ex.: "Financeiro - Serviços Gerais"), por isso
-        tudo que vem antes de "_Versão_{N}_" é considerado o Processo inteiro.
-        O Macroprocesso NÃO consta nem no nome do arquivo nem no XML.
-        Retorna (processo, subprocesso_do_nome); cada item pode ser None.
-        """
-        nome_base = os.path.splitext(os.path.basename(caminho_xml))[0]
-        nome_normalizado = re.sub(r"\s+", " ", nome_base.replace("_", " ")).strip()
-
-        match = re.match(
-            r"^(?P<processo>.+?)\s+Vers[aã]o\s+\d+\s*(?P<sub>.*)$",
-            nome_normalizado,
-            flags=re.IGNORECASE
-        )
-        if not match:
-            return None, None
-
-        processo = match.group("processo").strip(" -")
-        sub = match.group("sub").strip()
-        return (processo or None), (sub or None)
+        return extrair_processo_do_nome_arquivo(caminho_xml)
 
     def extrair_macroprocesso_do_xml(self, root):
-        """
-        Procura o Macroprocesso na árvore do XML. O Supravizio não exporta o nome do
-        macroprocesso no XML de fluxo (apenas a classe vazia
-        'Venki.Supravizio.Processo.MacroProcesso'), então na prática isto quase sempre
-        retorna None e o campo precisa ser preenchido manualmente.
-        """
-        for tag in ("MacroProcesso", "Macroprocesso", "NomeMacroProcesso", "ClasseMacroProcesso"):
-            for node in root.iter(tag):
-                if node.text and node.text.strip():
-                    return node.text.strip()
-                desc = node.find("Descricao")
-                if desc is not None and desc.text and desc.text.strip():
-                    return desc.text.strip()
-        return None
+        return extrair_macroprocesso_do_xml(root)
 
     def aplicar_valor_automatico(self, entry, novo_valor, valor_auto_anterior, rotulo):
         """
@@ -282,253 +748,45 @@ class SupravizioDocApp:
             )
 
     def load_template(self):
-        self.template_path = filedialog.askopenfilename(title="Selecionar DOCX", filetypes=[("Word", "*.docx")])
-        if self.template_path: self.lbl_template.config(text=os.path.basename(self.template_path), fg="black")
+        caminho = filedialog.askopenfilename(title="Selecionar DOCX", filetypes=[("Word", "*.docx")])
+        if not caminho:
+            return
+        try:
+            self.template_path = caminho
+            self.lbl_template.config(text=os.path.basename(self.template_path), fg="black")
+            self.logger.info(f"Template selecionado: {self.template_path}")
+            self._atualizar_config(template_path=self.template_path)
+        except Exception as e:
+            self.logger.exception(f"Falha ao selecionar o template '{caminho}': {e}")
+            messagebox.showerror("Erro ao selecionar template", f"Não foi possível usar o arquivo selecionado:\n{e}")
 
     def load_dir(self):
-        self.output_dir = filedialog.askdirectory(title="Selecionar Destino")
-        if self.output_dir: self.lbl_dir.config(text=self.output_dir, fg="black")
+        caminho = filedialog.askdirectory(title="Selecionar Destino")
+        if not caminho:
+            return
+        try:
+            self.output_dir = caminho
+            self.lbl_dir.config(text=self.output_dir, fg="black")
+            self.logger.info(f"Pasta de destino selecionada: {self.output_dir}")
+            self._atualizar_config(output_dir=self.output_dir)
+        except Exception as e:
+            self.logger.exception(f"Falha ao selecionar a pasta de destino '{caminho}': {e}")
+            messagebox.showerror("Erro ao selecionar pasta", f"Não foi possível usar a pasta selecionada:\n{e}")
 
     # ==========================================================
     # LÓGICA DE EXTRAÇÃO DE DADOS
     # ==========================================================
     def get_texto(self, node, tag, default=""):
-        child = node.find(tag)
-        if child is not None and child.text:
-            return child.text.strip()
-        return default
+        return get_texto(node, tag, default)
 
     def extrair_propriedades_campos(self, root):
-        propriedades = {}
-
-        for prop in root.findall(".//CustomProperty"):
-            nome = self.get_texto(prop, "Name")
-            tabela = self.get_texto(prop, "TableName")
-
-            if not nome or not tabela:
-                continue
-
-            if nome not in propriedades:
-                propriedades[nome] = {
-                    "rotulo": self.get_texto(prop, "Text") or self.get_texto(prop, "Description") or nome,
-                    "descricao": self.get_texto(prop, "Description") or self.get_texto(prop, "Text") or nome,
-                    "tipo": self.get_texto(prop, "Type", "String"),
-                    "tabela": tabela,
-                    "coluna": self.get_texto(prop, "TableColumn"),
-                }
-
-        return propriedades
+        return extrair_propriedades_campos(root)
 
     def ler_xml_root(self):
-        try:
-            return ET.parse(self.xml_path).getroot()
-        except ET.ParseError:
-            with open(self.xml_path, 'r', encoding='utf-8-sig') as file:
-                xml_content = file.read().strip()
-            if not xml_content:
-                raise Exception("O arquivo XML selecionado está vazio.")
-            return ET.fromstring(xml_content)
+        return ler_xml_root(self.xml_path)
 
     def extrair_dados_xml(self):
-        self.logger.info(f"Iniciando extração de dados do XML: {self.xml_path}")
-        root = self.ler_xml_root()
-
-        dados = {"nome_fluxo": "", "servicos": [], "campos": [], "anexos": [], "scripts": []}
-        propriedades_campos = self.extrair_propriedades_campos(root)
-
-        node_nome = root.find(".//NomeSubProcesso")
-        if node_nome is not None and node_nome.text:
-            dados["nome_fluxo"] = node_nome.text.strip()
-        else:
-            self.logger.warning("Não foi possível localizar a tag <NomeSubProcesso> no XML.")
-
-        # Dedup por (local, código): evita duplicar o mesmo script quando a MESMA atividade
-        # aparece repetida no diagrama (ex: um LinkInicial compartilhado entre várias páginas),
-        # mas preserva scripts com código idêntico que estejam em locais distintos (ex: o mesmo
-        # preenchimento de campo replicado no Evento Inicial e no Link Inicial).
-        scripts_vistos = set()
-
-        def registrar_script(local, sc_code):
-            chave = (local, sc_code)
-            if chave in scripts_vistos:
-                self.logger.debug(f"Script duplicado ignorado (mesma atividade repetida no diagrama): {local}")
-                return
-            scripts_vistos.add(chave)
-            dados["scripts"].append({"local": local, "codigo": sc_code})
-
-        servicos_vistos = set()
-
-        def coletar_servicos(restricoes):
-            """Lê pares (tipo, serviço) de nós <RestricaoServico>, ignorando entradas vazias."""
-            for rest in restricoes:
-                srv = rest.find("Servico")
-                tipo_txt = (
-                    self.get_texto(rest, "ClasseServico/Descricao")
-                    or (self.get_texto(srv, "ClasseServico/Descricao") if srv is not None else "")
-                )
-                nome_txt = self.get_texto(srv, "Descricao") if srv is not None else ""
-
-                if not tipo_txt and not nome_txt:
-                    self.logger.warning(
-                        "Encontrada uma <RestricaoServico> sem Tipo e sem Descrição do serviço; "
-                        "entrada ignorada (o serviço não veio expandido no XML)."
-                    )
-                    continue
-
-                chave = f"{tipo_txt} - {nome_txt}"
-                if chave not in servicos_vistos:
-                    servicos_vistos.add(chave)
-                    dados["servicos"].append({"tipo": tipo_txt, "nome": nome_txt})
-
-        # Fonte autoritativa: os serviços do PRÓPRIO subprocesso (ClasseSubProcesso).
-        # Isto evita capturar serviços de subprocessos secundários apenas engatilhados,
-        # e funciona mesmo em fluxos sem LinkInicial.
-        coletar_servicos(root.findall(".//SubProcesso/ClasseSubProcesso/RestricoesServicos/RestricaoServico"))
-
-        if not dados["servicos"]:
-            self.logger.warning(
-                "Nenhum serviço em <SubProcesso/ClasseSubProcesso>; tentando o LinkInicial como alternativa."
-            )
-            for link_inicial in root.findall(".//Atividade[Tipo='LinkInicial']"):
-                for alvo in link_inicial.findall(".//ClasseAlvo"):
-                    coletar_servicos(alvo.findall(".//RestricoesServicos/RestricaoServico"))
-
-        mapa_scripts = {
-            "ScriptModificado": "modificado",
-            "ScriptValidacao": "de validação",
-            "ScriptFormCarregado": "de formulário carregado",
-            "ScriptInicio": "de início",
-            "ScriptFim": "de fim",
-            "ScriptVolta": "de volta",
-            "ScriptEvento": "de evento",
-        }
-
-        # Scripts que ficam aninhados sob outro nó da atividade, e não como filho direto.
-        mapa_scripts_aninhados = {
-            "PapelResponsavel/PapelClasseNegocio/ScriptSelecaoAtores": "de seleção de atores (papel responsável)",
-            "PapelDestinatario/PapelClasseNegocio/ScriptSelecaoAtores": "de seleção de atores (papel destinatário)",
-        }
-
-        campos_vistos = set()
-        anexos_vistos = set()
-
-        for figura in root.findall(".//Figura"):
-            atividade = figura.find("Atividade")
-
-            if atividade is not None:
-                tag_tipo_atv = atividade.find("Tipo")
-                tipo_atv = tag_tipo_atv.text.strip() if (tag_tipo_atv is not None and tag_tipo_atv.text) else "Atividade"
-
-                # Nome real da tarefa (ex.: "Anexar comprovante de pagamento"), quando existir.
-                # Tipos sem rótulo próprio (LinkInicial, Gateway, etc.) caem no fallback do Tipo.
-                tag_desc_atv = atividade.find("Descricao")
-                descricao_atv = tag_desc_atv.text.strip() if (tag_desc_atv is not None and tag_desc_atv.text) else ""
-                if descricao_atv and descricao_atv != tipo_atv:
-                    nome_atv = f"{descricao_atv} ({tipo_atv})"
-                else:
-                    nome_atv = tipo_atv
-
-                # As operações do LinkInicial (evento de inicialização do fluxo) ficam em
-                # <Figura><OperacaoAtividade>, IRMÃO de <Atividade> e não dentro dela.
-                # Ler só atividade//OperacaoAtividade perdia esses scripts e campos.
-                operacoes = atividade.findall(".//OperacaoAtividade") + figura.findall("OperacaoAtividade")
-
-                for op in operacoes:
-                    for campo in op.findall(".//CampoPreenchimento"):
-                        nome_custom = campo.find("./NomeCustomizado")
-                        rotulo = campo.find("./Rotulo")
-                        
-                        # Extrai a Tabela da Tag 'FormaEdicaoWeb' no nível do Campo (Corrigido)
-                        tabela_nome = "Formulário"
-                        form_edicao = campo.find("./FormaEdicaoWeb")
-                        if form_edicao is not None and form_edicao.text:
-                            if form_edicao.text.strip().lower() != "formulario":
-                                tabela_nome = form_edicao.text.strip()
-                        
-                        if nome_custom is not None and nome_custom.text:
-                            nome_c = nome_custom.text.strip()
-                            prop_campo = propriedades_campos.get(nome_c, {})
-                            rot_txt = rotulo.text.strip() if (rotulo is not None and rotulo.text) else prop_campo.get("rotulo", nome_c)
-                            desc_txt = prop_campo.get("descricao", rot_txt)
-                            tipo_txt = prop_campo.get("tipo", "String")
-                            tabela_nome = prop_campo.get("tabela", tabela_nome)
-                            
-                            if nome_c and nome_c not in campos_vistos:
-                                dados["campos"].append({"nome": nome_c, "rotulo": rot_txt, "descricao": desc_txt, "tipo": tipo_txt, "tabela": tabela_nome})
-                                campos_vistos.add(nome_c)
-                                
-                            for tag_xml, nome_amigavel in mapa_scripts.items():
-                                s_node = campo.find(tag_xml)
-                                if s_node is not None and s_node.text and s_node.text.strip():
-                                    sc_code = s_node.text.strip()
-                                    registrar_script(
-                                        f"Atividade: {nome_atv} | Script {nome_amigavel} no campo: {nome_c}",
-                                        sc_code
-                                    )
-
-                    for tag_xml, nome_amigavel in mapa_scripts.items():
-                        s_node = op.find(tag_xml)
-                        if s_node is not None and s_node.text and s_node.text.strip():
-                            sc_code = s_node.text.strip()
-                            registrar_script(
-                                f"Atividade: {nome_atv} | Script {nome_amigavel} da operação",
-                                sc_code
-                            )
-
-                for tag_xml, nome_amigavel in list(mapa_scripts.items()) + list(mapa_scripts_aninhados.items()):
-                    s_node = atividade.find(tag_xml)
-                    if s_node is not None and s_node.text and s_node.text.strip():
-                        sc_code = s_node.text.strip()
-                        registrar_script(
-                            f"Atividade: {nome_atv} | Script {nome_amigavel} da atividade",
-                            sc_code
-                        )
-
-                for vi in atividade.findall(".//ValoresInputs/ValorInput"):
-                    expr_in = vi.find("ExpressaoValor")
-                    if expr_in is not None and expr_in.text and expr_in.text.strip():
-                        nome_input = self.get_texto(vi, "CustomProperty/Name") or self.get_texto(vi, "Nome") or "input"
-                        registrar_script(
-                            f"Atividade: {nome_atv} | Expressão de valor do input: {nome_input}",
-                            expr_in.text.strip()
-                        )
-
-                for escopo in atividade.findall(".//EscopoClasseAnexo/ClasseConfiguracao"):
-                    desc = escopo.find("./Descricao")
-                    sigla = escopo.find("./Sigla")
-                    if desc is not None and sigla is not None:
-                        d_txt = desc.text.strip() if desc.text else ""
-                        s_txt = sigla.text.strip() if sigla.text else ""
-                        if d_txt and s_txt and s_txt not in anexos_vistos:
-                            dados["anexos"].append({"nome": d_txt, "sigla": s_txt})
-                            anexos_vistos.add(s_txt)
-                            
-            gateway = figura.find("Gateway")
-            if gateway is not None:
-                tag_desc_gw = gateway.find("Descricao")
-                desc_gw = tag_desc_gw.text.strip() if (tag_desc_gw is not None and tag_desc_gw.text) else "Gateway"
-                expr = gateway.find("ExpressaoComparacaoDecision")
-                
-                if expr is not None and expr.text and expr.text.strip():
-                    sc_code = expr.text.strip()
-                    registrar_script(
-                        f"Gateway de Decisão: {desc_gw} | Expressão de Decisão",
-                        sc_code
-                    )
-
-        self.logger.info(
-            f"Extração concluída. nome_fluxo='{dados['nome_fluxo']}' | "
-            f"servicos={len(dados['servicos'])} | campos={len(dados['campos'])} | "
-            f"anexos={len(dados['anexos'])} | scripts={len(dados['scripts'])}"
-        )
-        if not dados["servicos"]:
-            self.logger.warning("Nenhum serviço associado foi encontrado no Link Inicial do fluxo.")
-        if not dados["campos"]:
-            self.logger.warning("Nenhum campo de preenchimento foi encontrado no fluxo.")
-        if not dados["scripts"]:
-            self.logger.warning("Nenhum script (IronPython) ou expressão de Gateway foi encontrado no fluxo.")
-
-        return dados
+        return extrair_dados_xml(self.xml_path, self.logger)
 
     def add_code_block(self, paragraph, code_text):
         """Cria um bloco de código com aparência de IDE, incluindo sintaxe colorida."""
@@ -651,6 +909,16 @@ class SupravizioDocApp:
             return idx
         return -1
 
+    def _set_status(self, texto, passo):
+        """
+        Atualiza o texto de status e a barra de progresso, e força o Tk a repintar
+        AGORA (sem isso a janela só atualizaria no fim de gerar_documento, já que tudo
+        roda de forma síncrona na thread principal — não há threading aqui).
+        """
+        self.lbl_status.config(text=texto)
+        self.progress["value"] = passo
+        self.root.update_idletasks()
+
     def gerar_documento(self):
         if not self.xml_path or not self.template_path or not self.output_dir:
             messagebox.showerror("Erro", "Preencha todos os caminhos (XML, Template e Pasta).")
@@ -663,6 +931,7 @@ class SupravizioDocApp:
 
         nome_fluxo = ""
         try:
+            self._set_status("Lendo e extraindo dados do XML...", 1)
             dados = self.extrair_dados_xml()
             nome_fluxo = dados["nome_fluxo"]
 
@@ -678,8 +947,10 @@ class SupravizioDocApp:
             if not evid:
                 self.logger.warning("Campo 'Evidências em Homologação' não foi preenchido.")
 
+            self._set_status("Carregando template DOCX...", 2)
             doc = Document(self.template_path)
 
+            self._set_status("Preenchendo campos do documento...", 3)
             idx_titulo_desc = -1
             idx_titulo_servico = -1
             idx_evid = -1
@@ -722,6 +993,7 @@ class SupravizioDocApp:
             if len(doc.tables) <= 2:
                 self.logger.warning("Template DOCX não possui a 3ª tabela esperada; tabela de Anexos não preenchida.")
 
+            self._set_status("Formatando blocos de script...", 4)
             if idx_evid != -1 and dados["scripts"]:
                 estilo_ancora = doc.paragraphs[idx_evid].style
                 for s_dict in reversed(dados["scripts"]):
@@ -750,6 +1022,7 @@ class SupravizioDocApp:
                     p_atual = self.inserir_paragrafo_depois(p_atual)
                     p_atual.add_run(linha)
 
+            self._set_status("Montando tabelas...", 5)
             if len(doc.tables) > 0:
                 t_campos = doc.tables[0]
                 for row in t_campos.rows[1:]: t_campos._element.remove(row._tr)
@@ -773,11 +1046,17 @@ class SupravizioDocApp:
             nome_arquivo = limpar_nome_arquivo(dados["nome_fluxo"])
             caminho_completo = os.path.join(self.output_dir, f"Artefato_{nome_arquivo}.docx")
 
+            self._set_status("Salvando documento...", 6)
             doc.save(caminho_completo)
             self.logger.info(f"Artefato salvo com sucesso em: {caminho_completo}")
             self.logger.info("=== Geração concluída ===")
 
+            # Só persiste Macroprocesso/Processo depois de uma geração bem-sucedida
+            # (não a cada tecla), para não gravar valores que nunca chegaram a virar artefato.
+            self._atualizar_config(macroprocesso=macro, processo=proc)
+
             log_path = self.gravar_log(nome_fluxo)
+            self._set_status("Concluído.", 0)
             messagebox.showinfo(
                 "Sucesso",
                 f"Artefato Injetado com formatação visual de código!\n\nSalvo em:\n{caminho_completo}"
@@ -787,12 +1066,35 @@ class SupravizioDocApp:
         except Exception as e:
             self.logger.exception(f"Falha na geração do artefato: {e}")
             log_path = self.gravar_log(nome_fluxo)
+            self._set_status("Falha na geração.", 0)
             messagebox.showerror(
                 "Erro",
                 f"Falha na manipulação do DOCX:\n{e}\n\nDetalhes em:\n{log_path}"
             )
 
 if __name__ == "__main__":
-    root = tk.Tk()
+    def _excecao_nao_tratada_inicial(exc_type, exc_value, exc_tb):
+        """
+        Cobre falhas fora do alcance de report_callback_exception (ex.: durante a
+        construção de SupravizioDocApp, antes do mainloop existir), quando ainda não
+        há self.logger/self.log_handler para reaproveitar.
+        """
+        import traceback
+        linhas = [linha.rstrip("\n") for linha in traceback.format_exception(exc_type, exc_value, exc_tb)]
+        log_path = escrever_arquivo_log(linhas, "crash")
+        try:
+            messagebox.showerror(
+                "Erro inesperado",
+                f"Ocorreu um erro inesperado e o programa será encerrado:\n{exc_value}"
+                f"\n\nDetalhes em:\n{log_path}"
+            )
+        except Exception:
+            pass
+
+    sys.excepthook = _excecao_nao_tratada_inicial
+
+    # TkinterDnD.Tk() é um substituto direto de tk.Tk() que só acrescenta suporte a
+    # arrastar-e-soltar; sem a lib instalada, cai para o tk.Tk() normal (sem DnD).
+    root = TkinterDnD.Tk() if DND_DISPONIVEL else tk.Tk()
     app = SupravizioDocApp(root)
     root.mainloop()
