@@ -1,0 +1,102 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ModeloImportacaoXml>
+    <NomeSubProcesso>Fluxo Comparavel</NomeSubProcesso>
+    <SubProcesso>
+        <ClasseSubProcesso>
+            <RestricoesServicos>
+                <RestricaoServico>
+                    <ClasseServico><Descricao>Solicitação</Descricao></ClasseServico>
+                    <Servico><Descricao>Serviço Mantido</Descricao></Servico>
+                </RestricaoServico>
+                <RestricaoServico>
+                    <ClasseServico><Descricao>Incidente</Descricao></ClasseServico>
+                    <Servico><Descricao>Serviço Que Sai</Descricao></Servico>
+                </RestricaoServico>
+            </RestricoesServicos>
+        </ClasseSubProcesso>
+    </SubProcesso>
+
+    <!-- Combobox cuja lista MUDA na versão nova -->
+    <CustomProperty>
+        <Name>TIPO_DEMANDA</Name>
+        <TableName>CPE_CSC</TableName>
+        <Text>Tipo de Demanda</Text>
+        <Description>Tipo de Demanda</Description>
+        <Type>String</Type>
+        <Control>DropDownList</Control>
+        <ListItems>Mercadoria;Serviços;Obsoleto</ListItems>
+    </CustomProperty>
+    <!-- Campo que permanece idêntico nas duas versões -->
+    <CustomProperty>
+        <Name>CAMPO_ESTAVEL</Name>
+        <TableName>CPE_CSC</TableName>
+        <Text>Campo Estável</Text>
+        <Description>Campo Estável</Description>
+        <Type>String</Type>
+        <Control>TextBox</Control>
+    </CustomProperty>
+    <!-- Campo que será REMOVIDO na versão nova -->
+    <CustomProperty>
+        <Name>CAMPO_REMOVIDO</Name>
+        <TableName>CPE_CSC</TableName>
+        <Text>Campo Removido</Text>
+        <Description>Campo Removido</Description>
+        <Type>Integer</Type>
+        <Control>TextBox</Control>
+    </CustomProperty>
+    <!-- Campo que MUDA DE TIPO na versão nova: String -> Integer -->
+    <CustomProperty>
+        <Name>TEXT</Name>
+        <TableName>CPE_CSC</TableName>
+        <Text>Campo Text</Text>
+        <Description>Campo Text</Description>
+        <Type>String</Type>
+        <Control>TextBox</Control>
+    </CustomProperty>
+
+    <Figuras>
+        <Figura>
+            <Atividade>
+                <Tipo>Tarefa</Tipo>
+                <Descricao>Preencher dados</Descricao>
+                <Operacoes>
+                    <OperacaoAtividade>
+                        <Campos>
+                            <CampoPreenchimento>
+                                <NomeCustomizado>TIPO_DEMANDA</NomeCustomizado>
+                            </CampoPreenchimento>
+                            <CampoPreenchimento>
+                                <NomeCustomizado>CAMPO_ESTAVEL</NomeCustomizado>
+                            </CampoPreenchimento>
+                            <CampoPreenchimento>
+                                <NomeCustomizado>CAMPO_REMOVIDO</NomeCustomizado>
+                            </CampoPreenchimento>
+                            <CampoPreenchimento>
+                                <NomeCustomizado>TEXT</NomeCustomizado>
+                            </CampoPreenchimento>
+                        </Campos>
+                    </OperacaoAtividade>
+                </Operacoes>
+                <ScriptInicio>print('script que sera alterado')
+valor = 1</ScriptInicio>
+                <EscopoClasseAnexo>
+                    <ClasseConfiguracao>
+                        <Descricao>Anexo Mantido</Descricao>
+                        <Sigla>ANXMANT</Sigla>
+                    </ClasseConfiguracao>
+                    <ClasseConfiguracao>
+                        <Descricao>Anexo Que Sai</Descricao>
+                        <Sigla>ANXSAI</Sigla>
+                    </ClasseConfiguracao>
+                </EscopoClasseAnexo>
+            </Atividade>
+        </Figura>
+        <Figura>
+            <Atividade>
+                <Tipo>EventoFinal</Tipo>
+                <Descricao>Fim</Descricao>
+                <ScriptFim>print('script que sera removido')</ScriptFim>
+            </Atividade>
+        </Figura>
+    </Figuras>
+</ModeloImportacaoXml>

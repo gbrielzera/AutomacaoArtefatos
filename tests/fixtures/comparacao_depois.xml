@@ -1,0 +1,107 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ModeloImportacaoXml>
+    <NomeSubProcesso>Fluxo Comparavel</NomeSubProcesso>
+    <SubProcesso>
+        <ClasseSubProcesso>
+            <RestricoesServicos>
+                <RestricaoServico>
+                    <ClasseServico><Descricao>Solicitação</Descricao></ClasseServico>
+                    <Servico><Descricao>Serviço Mantido</Descricao></Servico>
+                </RestricaoServico>
+                <RestricaoServico>
+                    <ClasseServico><Descricao>Requisição</Descricao></ClasseServico>
+                    <Servico><Descricao>Serviço Que Entra</Descricao></Servico>
+                </RestricaoServico>
+            </RestricoesServicos>
+        </ClasseSubProcesso>
+    </SubProcesso>
+
+    <!-- Mesma propriedade, porém a lista de itens mudou: 'Obsoleto' saiu e 'Transporte' entrou -->
+    <CustomProperty>
+        <Name>TIPO_DEMANDA</Name>
+        <TableName>CPE_CSC</TableName>
+        <Text>Tipo de Demanda</Text>
+        <Description>Tipo de Demanda</Description>
+        <Type>String</Type>
+        <Control>DropDownList</Control>
+        <ListItems>Mercadoria;Serviços;Transporte</ListItems>
+    </CustomProperty>
+    <CustomProperty>
+        <Name>CAMPO_ESTAVEL</Name>
+        <TableName>CPE_CSC</TableName>
+        <Text>Campo Estável</Text>
+        <Description>Campo Estável</Description>
+        <Type>String</Type>
+        <Control>TextBox</Control>
+    </CustomProperty>
+    <!-- Campo NOVO nesta versão -->
+    <CustomProperty>
+        <Name>CAMPO_NOVO</Name>
+        <TableName>CPE_CSC</TableName>
+        <Text>Campo Novo</Text>
+        <Description>Campo Novo</Description>
+        <Type>Decimal</Type>
+        <Control>TextBox</Control>
+    </CustomProperty>
+    <!-- Mesmo campo da versão anterior, agora com Type=Integer (era String) -->
+    <CustomProperty>
+        <Name>TEXT</Name>
+        <TableName>CPE_CSC</TableName>
+        <Text>Campo Text</Text>
+        <Description>Campo Text</Description>
+        <Type>Integer</Type>
+        <Control>TextBox</Control>
+    </CustomProperty>
+
+    <Figuras>
+        <Figura>
+            <Atividade>
+                <Tipo>Tarefa</Tipo>
+                <Descricao>Preencher dados</Descricao>
+                <Operacoes>
+                    <OperacaoAtividade>
+                        <Campos>
+                            <CampoPreenchimento>
+                                <NomeCustomizado>TIPO_DEMANDA</NomeCustomizado>
+                            </CampoPreenchimento>
+                            <CampoPreenchimento>
+                                <NomeCustomizado>CAMPO_ESTAVEL</NomeCustomizado>
+                            </CampoPreenchimento>
+                            <CampoPreenchimento>
+                                <NomeCustomizado>CAMPO_NOVO</NomeCustomizado>
+                            </CampoPreenchimento>
+                            <CampoPreenchimento>
+                                <NomeCustomizado>TEXT</NomeCustomizado>
+                            </CampoPreenchimento>
+                        </Campos>
+                    </OperacaoAtividade>
+                </Operacoes>
+                <ScriptInicio>print('script JA alterado')
+valor = 2
+extra = True</ScriptInicio>
+                <EscopoClasseAnexo>
+                    <ClasseConfiguracao>
+                        <Descricao>Anexo Mantido</Descricao>
+                        <Sigla>ANXMANT</Sigla>
+                    </ClasseConfiguracao>
+                    <ClasseConfiguracao>
+                        <Descricao>Anexo Que Entra</Descricao>
+                        <Sigla>ANXENTRA</Sigla>
+                    </ClasseConfiguracao>
+                </EscopoClasseAnexo>
+            </Atividade>
+        </Figura>
+        <Figura>
+            <Atividade>
+                <Tipo>EventoFinal</Tipo>
+                <Descricao>Fim</Descricao>
+            </Atividade>
+        </Figura>
+        <Figura>
+            <Gateway>
+                <Descricao>Novo gateway</Descricao>
+                <ExpressaoComparacaoDecision>return Formulario['TIPO_DEMANDA'] == 'Transporte'</ExpressaoComparacaoDecision>
+            </Gateway>
+        </Figura>
+    </Figuras>
+</ModeloImportacaoXml>
