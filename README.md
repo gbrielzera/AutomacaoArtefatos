@@ -1,282 +1,458 @@
 # Automação de Artefatos
 
-> **Do dado estruturado ao documento pronto — sem copiar e colar.**
+> **Transformando processos complexos em documentação estruturada, rastreável e pronta para uso.**
 
-Aplicação desktop desenvolvida em **Python** para automatizar a geração de documentos técnicos a partir de arquivos **XML de processos** e de um **modelo DOCX**.
+Aplicação desktop desenvolvida em **Python** para automatizar a geração e atualização de documentos técnicos a partir de arquivos **XML de processos** e modelos **DOCX**.
 
-O projeto nasceu de um problema real de produtividade: transformar informações técnicas espalhadas em uma estrutura complexa de processo em um documento padronizado, confiável e pronto para validação.
+O projeto combina **processamento de XML, comparação entre versões, análise contextual de scripts, geração de documentos, formatação de código e testes automatizados** em uma única aplicação.
 
-A proposta vai além de simplesmente preencher campos. A aplicação interpreta a estrutura do XML, identifica elementos relevantes do fluxo, preserva o contexto de scripts e expressões e gera um documento final com formatação adequada para documentação técnica.
+A ideia central é eliminar uma classe de trabalho extremamente suscetível a erros:
+
+> **se uma informação já está estruturada em um sistema, o usuário não deveria precisar encontrá-la, copiá-la e documentá-la manualmente.**
+
+---
+
+## Visão geral
+
+A aplicação recebe informações estruturadas de um processo e transforma esses dados em documentação técnica.
+
+Além da geração de um artefato a partir de uma única versão do fluxo, o sistema é capaz de **comparar duas versões do mesmo processo**, identificando o que foi:
+
+* incluído;
+* removido;
+* modificado;
+* mantido sem alterações.
+
+Isso permite transformar a documentação de uma tarefa puramente manual em um processo **automatizado, rastreável e baseado em diferenças reais entre versões**.
 
 ---
 
 ## O problema
 
-Documentar alterações em processos pode parecer simples até chegar a hora de fazer isso manualmente.
+Processos empresariais podem possuir uma estrutura bastante complexa.
 
-Em um fluxo complexo, é necessário localizar e transcrever informações como:
+Uma única alteração pode envolver simultaneamente:
 
-- nome do fluxo e processo;
-- serviços associados ao fluxo principal;
-- campos utilizados pelo processo;
-- rótulos, tipos e tabelas de persistência;
-- configurações de anexos;
-- scripts executados em diferentes etapas;
-- expressões de regras de negócio e decisões;
-- localização exata de cada script dentro do fluxo.
+* serviços;
+* campos;
+* tabelas;
+* controles de interface;
+* listas de opções;
+* anexos;
+* scripts;
+* validações;
+* regras de negócio;
+* gateways;
+* diferentes atividades do fluxo.
 
-Além de consumir tempo, esse tipo de atividade cria pontos de falha: informações podem ser esquecidas, duplicadas ou associadas ao elemento errado.
+Documentar essas mudanças manualmente exige navegar pela estrutura do processo, localizar cada alteração e posteriormente transcrever essas informações para um documento padronizado.
 
-**A solução deste projeto é transformar essa atividade manual em um pipeline automatizado e rastreável.**
+Isso cria três problemas principais:
+
+### Produtividade
+
+Grande quantidade de trabalho repetitivo de busca, conferência e transcrição.
+
+### Confiabilidade
+
+É fácil esquecer um elemento, duplicar informações ou documentar uma alteração no contexto errado.
+
+### Rastreabilidade
+
+Ao comparar duas versões manualmente, torna-se difícil responder rapidamente:
+
+> **O que realmente mudou?**
+
+A aplicação foi construída justamente para resolver esse problema.
 
 ---
 
-## O que a aplicação faz
+# A solução
 
-A aplicação funciona como uma ponte entre o **XML exportado de um processo** e um **modelo de documentação em Word**.
-
-### Fluxo de execução
+O sistema transforma:
 
 ```text
-┌────────────────────┐
-│ XML do processo    │
-└─────────┬──────────┘
-          │
-          ▼
-┌────────────────────┐
-│ Parser / Extração  │
-│ de dados           │
-└─────────┬──────────┘
-          │
-          ├── Fluxo
-          ├── Serviços
-          ├── Campos
-          ├── Anexos
-          ├── Scripts
-          └── Expressões
-          │
-          ▼
-┌────────────────────┐
-│ Modelo DOCX        │
-└─────────┬──────────┘
-          │
-          ▼
-┌────────────────────┐
-│ Documento final    │
-│ padronizado        │
-└────────────────────┘
+XML + Modelo DOCX
+        │
+        ▼
+┌──────────────────────┐
+│ Extração estruturada │
+└──────────┬───────────┘
+           │
+           ▼
+┌──────────────────────┐
+│ Análise / Comparação │
+└──────────┬───────────┘
+           │
+           ├── Serviços
+           ├── Campos
+           ├── Anexos
+           ├── Scripts
+           └── Regras
+           │
+           ▼
+┌──────────────────────┐
+│ Geração do artefato  │
+└──────────┬───────────┘
+           │
+           ▼
+     Documento DOCX
 ```
 
-O usuário fornece apenas as informações que dependem de contexto humano, enquanto os dados que já existem no XML são extraídos e estruturados automaticamente.
+O resultado é uma documentação construída a partir dos próprios dados do processo, reduzindo significativamente a necessidade de intervenção manual.
 
 ---
 
-## Destaques técnicos
+# Comparação entre versões
 
-### Parser de XML resiliente
+Uma das principais evoluções do projeto é a capacidade de comparar duas versões de um fluxo.
 
-A extração utiliza `xml.etree.ElementTree` e foi estruturada para lidar com diferentes situações encontradas nos arquivos exportados.
+O sistema extrai os dados de cada XML e produz uma estrutura de diferenças.
 
-Entre os cuidados implementados estão:
-
-- leitura da árvore XML;
-- fallback para conteúdo com BOM/encoding compatível;
-- identificação do processo a partir do nome do arquivo;
-- extração de propriedades de campos;
-- deduplicação de serviços;
-- deduplicação contextual de scripts;
-- identificação de scripts em diferentes níveis da árvore;
-- tratamento de atividades, operações e gateways;
-- geração de logs durante a extração.
-
-Um detalhe importante é a **extração contextual**: scripts iguais não são simplesmente descartados.
-
-A aplicação considera o local em que o script aparece, evitando perder informações relevantes quando o mesmo código é utilizado em pontos diferentes do fluxo.
-
----
-
-### Extração de scripts e regras de negócio
-
-A aplicação identifica diferentes tipos de scripts, incluindo:
-
-- scripts modificados;
-- scripts de validação;
-- scripts de formulário carregado;
-- scripts de início e fim;
-- scripts de volta e evento;
-- scripts de seleção de atores;
-- expressões de valor de inputs;
-- expressões de decisão de gateways.
-
-Cada ocorrência recebe uma descrição contextual, por exemplo:
+### Exemplo conceitual
 
 ```text
-Atividade: LinkInicial | Script modificado no campo: FORNECEDOR1
+VERSÃO ANTERIOR
+       │
+       ▼
+   Extrator
+       │
+       ▼
+┌───────────────┐
+│ Dados antigos │
+└───────┬───────┘
+        │
+        │ comparar
+        │
+        ▼
+┌───────────────┐
+│ Dados atuais  │
+└───────┬───────┘
+       ▲
+       │
+   Extrator
+       ▲
+       │
+VERSÃO ATUAL
+```
+
+A comparação identifica alterações em diferentes categorias.
+
+### Serviços
+
+```text
+Incluídos
+Removidos
+Mantidos
+```
+
+### Anexos
+
+```text
+Incluídos
+Removidos
+```
+
+### Campos
+
+```text
+Incluídos
+Removidos
+Modificados
+```
+
+A análise de campos consegue identificar alterações como:
+
+* tipo;
+* controle;
+* lista de itens;
+* descrição;
+* propriedades relacionadas.
+
+Por exemplo:
+
+```text
+String → Integer
 ```
 
 ou:
 
 ```text
-Gateway de Decisão: Validar solicitação | Expressão de Decisão
+Lista anterior:
+Mercadoria; Serviços; Obsoleto
+
+Lista atual:
+Mercadoria; Serviços; Transporte
 ```
 
-Isso permite que o documento responda não apenas:
-
-> **"Qual é o código?"**
-
-mas também:
-
-> **"Onde esse código está sendo executado?"**
-
----
-
-## Código formatado como código
-
-Um dos pontos centrais do projeto é a documentação dos scripts.
-
-Em vez de inserir o conteúdo como texto puro no Word, o projeto utiliza **Pygments** para realizar a tokenização do código Python e reproduzir uma apresentação semelhante à encontrada em uma IDE.
-
-O resultado busca preservar:
-
-- indentação;
-- quebras de linha;
-- estrutura visual do código;
-- fonte monoespaçada;
-- destaque sintático;
-- contexto de execução.
-
-Isso torna documentos extensos de scripts significativamente mais legíveis e úteis para revisão técnica.
-
----
-
-## Interface
-
-A aplicação possui uma interface desktop construída com **Tkinter**, mantendo o fluxo de uso simples.
-
-O usuário pode:
-
-1. informar ou confirmar o macroprocesso;
-2. informar ou confirmar o processo;
-3. descrever a alteração/criação;
-4. informar a evidência/chamado;
-5. selecionar o XML;
-6. selecionar o modelo DOCX;
-7. gerar o artefato.
-
-Também existe suporte opcional a **arrastar e soltar arquivos**, quando `tkinterdnd2` está disponível.
-
----
-
-## Tratamento de erros e observabilidade
-
-Automação boa não é só aquela que funciona quando tudo dá certo.
-
-O projeto possui uma camada de logging para registrar o processamento e facilitar o diagnóstico de problemas.
-
-Os logs podem registrar:
-
-- início e fim da extração;
-- quantidade de serviços, campos, anexos e scripts encontrados;
-- elementos ignorados ou incompletos;
-- arquivos processados;
-- exceções não tratadas;
-- informações de execução necessárias para investigação.
-
-Em caso de falha inesperada, a aplicação registra um **log de crash** antes de apresentar a mensagem ao usuário.
-
-Também existe persistência local de configurações/histórico de execução para reduzir trabalho repetitivo em utilizações posteriores.
-
----
-
-## Stack
-
-| Tecnologia | Utilização |
-|---|---|
-| **Python** | Linguagem principal |
-| **Tkinter** | Interface gráfica desktop |
-| **ElementTree** | Parsing e navegação do XML |
-| **python-docx** | Manipulação e geração de DOCX |
-| **Pygments** | Tokenização e destaque sintático dos scripts |
-| **lxml** | Suporte ao processamento XML |
-| **pytest** | Testes automatizados |
-| **tkinterdnd2** | Drag & Drop opcional |
-| **JSON** | Persistência de configurações |
-| **logging** | Observabilidade e diagnóstico |
-
----
-
-## Estrutura do projeto
+O sistema consegue representar a alteração como:
 
 ```text
-AutomacaoArtefatos/
-│
-├── supra.py                  # Aplicação e lógica principal
-├── Modelo de Artefato.docx   # Modelo utilizado para geração
-├── requirements.txt          # Dependências de execução
-├── requirements-dev.txt      # Dependências de desenvolvimento/testes
-├── tests/                    # Testes automatizados
-└── .gitignore
+Incluídos: Transporte
+Removidos: Obsoleto
 ```
 
 ---
 
-## Instalação
+# Análise contextual de scripts
 
-### Pré-requisitos
+Scripts são tratados como elementos de primeira classe.
 
-- Python 3.x
-- Windows recomendado para execução da aplicação desktop
-- Um arquivo XML exportado do sistema de processos
-- Um modelo DOCX compatível com a estrutura esperada pela aplicação
+O sistema não considera apenas o conteúdo do código para identificar uma ocorrência.
 
-### 1. Clone o repositório
+O **contexto e o local de execução** também fazem parte da identificação.
 
-```bash
-git clone https://github.com/gbrielzera/AutomacaoArtefatos.git
-cd AutomacaoArtefatos
+Isso é importante porque o mesmo código pode aparecer legitimamente em diferentes pontos do fluxo.
+
+Por exemplo:
+
+```text
+Atividade: LinkInicial
+Script modificado no campo: FORNECEDOR1
 ```
 
-### 2. Crie um ambiente virtual
+ou:
 
-```bash
-python -m venv .venv
+```text
+Gateway de Decisão: Validar solicitação
+Expressão de Decisão
 ```
 
-No Windows:
+Durante a comparação entre versões, os scripts podem ser classificados como:
 
-```bash
-.venv\Scripts\activate
+```text
+┌───────────────┐
+│ Script novo   │
+└───────────────┘
+
+┌───────────────┐
+│ Script removido│
+└───────────────┘
+
+┌───────────────┐
+│ Script alterado│
+└───────────────┘
 ```
 
-### 3. Instale as dependências
+Quando um script é alterado, a estrutura da comparação mantém as duas versões do código:
 
-```bash
-pip install -r requirements.txt
+```text
+ANTES
+    ↓
+código original
+
+DEPOIS
+    ↓
+código modificado
 ```
 
-Para desenvolvimento e testes:
-
-```bash
-pip install -r requirements-dev.txt
-```
+Isso permite que a documentação represente não apenas a existência da alteração, mas também **o que foi alterado**.
 
 ---
 
-## Execução
+# Código com formatação de IDE
 
-```bash
-python supra.py
-```
+Um dos diferenciais do projeto está na forma como os scripts são inseridos no documento.
 
-A interface gráfica será aberta e poderá ser utilizada para selecionar os arquivos e preencher os dados complementares.
+Em vez de transformar o código em texto simples, a aplicação utiliza **Pygments** para realizar a tokenização e aplicar destaque sintático.
+
+O objetivo é preservar:
+
+* indentação;
+* quebras de linha;
+* espaçamento;
+* estrutura visual;
+* fonte monoespaçada;
+* destaque de sintaxe;
+* contexto do script.
+
+O resultado aproxima a apresentação do código da experiência de leitura de uma IDE.
+
+Isso é especialmente importante quando o documento contém grandes quantidades de **Python/IronPython**.
 
 ---
 
-## Testes
+# Extração resiliente de XML
 
-As funções responsáveis pela extração foram projetadas para serem testáveis independentemente da interface gráfica.
+A aplicação utiliza `xml.etree.ElementTree` para navegar pela estrutura dos arquivos exportados.
 
-Para executar os testes:
+A extração possui mecanismos específicos para lidar com características dos XMLs utilizados pelo processo.
+
+Entre eles:
+
+* tratamento de encoding e BOM;
+* identificação do processo a partir do nome do arquivo;
+* extração de propriedades de campos;
+* identificação de controles de interface;
+* extração de listas de opções;
+* extração de serviços;
+* extração de anexos;
+* identificação de atividades;
+* identificação de gateways;
+* extração de scripts em diferentes contextos;
+* deduplicação contextual;
+* fallback para estruturas alternativas.
+
+### Deduplicação contextual
+
+Um simples:
+
+```python
+if script in scripts:
+    ignore()
+```
+
+não seria suficiente.
+
+O projeto utiliza uma abordagem baseada no contexto:
+
+```text
+(local, código)
+```
+
+Dessa forma, um mesmo código pode aparecer mais de uma vez quando realmente representa ocorrências diferentes.
+
+Ao mesmo tempo, ocorrências duplicadas provocadas pela própria estrutura do diagrama podem ser eliminadas.
+
+---
+
+# Informações extraídas
+
+A aplicação trabalha com diferentes categorias de informações.
+
+### Fluxo
+
+* nome do subprocesso;
+* processo;
+* versão.
+
+### Serviços
+
+* tipo;
+* nome;
+* serviços associados ao fluxo principal.
+
+### Campos
+
+* nome;
+* rótulo;
+* descrição;
+* tipo;
+* tabela;
+* coluna;
+* controle;
+* lista de itens.
+
+### Configurações
+
+* anexos;
+* arquivos permitidos;
+* propriedades relacionadas.
+
+### Scripts
+
+* script modificado;
+* validação;
+* formulário carregado;
+* início;
+* fim;
+* eventos;
+* retorno;
+* seleção de atores;
+* expressões;
+* regras de decisão.
+
+---
+
+# Interface desktop
+
+A aplicação possui uma interface gráfica desenvolvida com **Tkinter**.
+
+A proposta é manter a complexidade da automação escondida do usuário.
+
+O fluxo de utilização é essencialmente:
+
+```text
+Selecionar arquivos
+       ↓
+Preencher informações complementares
+       ↓
+Processar
+       ↓
+Gerar documentação
+```
+
+Também existe suporte opcional a **Drag & Drop** através de `tkinterdnd2`.
+
+Caso a biblioteca não esteja disponível, a aplicação continua funcionando utilizando a interface convencional do Tkinter.
+
+---
+
+# Observabilidade e tratamento de erros
+
+Automação em ambiente real precisa ser diagnosticável.
+
+Por isso, o projeto possui uma camada própria de logging.
+
+Durante a execução podem ser registrados:
+
+* início da operação;
+* arquivos utilizados;
+* quantidade de elementos encontrados;
+* elementos ignorados;
+* avisos de inconsistências;
+* etapas da extração;
+* resultados da comparação;
+* exceções.
+
+Em caso de falha inesperada, o sistema registra um **crash log** antes de apresentar o erro ao usuário.
+
+A estrutura também possui tratamento para falhas em recursos opcionais, evitando que funcionalidades auxiliares comprometam a execução principal.
+
+---
+
+# Persistência de configuração
+
+Informações utilizadas frequentemente podem ser persistidas localmente.
+
+A configuração é armazenada em:
+
+```text
+config/
+└── settings.json
+```
+
+Isso permite recuperar informações da execução anterior e reduzir preenchimentos repetitivos.
+
+Falhas na leitura ou gravação dessas configurações não impedem a execução principal da aplicação.
+
+---
+
+# Testes automatizados
+
+A lógica de negócio foi estruturada de forma que as principais funções possam ser testadas **sem depender da interface gráfica**.
+
+O projeto possui testes para:
+
+* extração de dados;
+* propriedades de campos;
+* parsing do nome do arquivo;
+* identificação de versão;
+* comparação entre versões;
+* serviços incluídos/removidos;
+* anexos incluídos/removidos;
+* campos incluídos/removidos;
+* campos modificados;
+* alterações de tipo;
+* alterações de listas;
+* scripts incluídos/removidos;
+* scripts modificados;
+* comparação de versões idênticas;
+* alteração do nome do fluxo.
+
+As fixtures utilizadas pelos testes simulam diferentes cenários de alteração, permitindo validar a lógica de comparação de forma determinística.
+
+Executar:
 
 ```bash
 pytest
@@ -284,122 +460,290 @@ pytest
 
 ---
 
-## Distribuição
+# Arquitetura
 
-A arquitetura foi pensada para permitir a distribuição como aplicação desktop, sem exigir que o usuário final interaja diretamente com o código-fonte Python.
+Apesar de ser uma aplicação desktop compacta, existe uma preocupação clara em manter a lógica de processamento separada da interface.
 
-O objetivo é disponibilizar uma experiência no formato:
+A estrutura conceitual é:
 
 ```text
-Usuário
-   │
-   ▼
-Executável
-   │
-   ├── XML
-   └── Modelo DOCX
-          │
-          ▼
-    Documento final
+┌───────────────────────────┐
+│        Interface GUI      │
+│          Tkinter          │
+└─────────────┬─────────────┘
+              │
+              ▼
+┌───────────────────────────┐
+│      Camada de domínio    │
+│                           │
+│  Extração                 │
+│  Comparação               │
+│  Transformação            │
+│  Validação                │
+└─────────────┬─────────────┘
+              │
+       ┌──────┴──────┐
+       ▼             ▼
+┌────────────┐ ┌────────────┐
+│    XML     │ │    DOCX    │
+│ ElementTree│ │python-docx │
+└────────────┘ └────────────┘
+```
+
+Essa separação permite evoluir a lógica de processamento sem tornar a aplicação completamente dependente da GUI.
+
+---
+
+# Stack tecnológica
+
+| Tecnologia      | Utilização                        |
+| --------------- | --------------------------------- |
+| **Python**      | Linguagem principal               |
+| **Tkinter**     | Interface desktop                 |
+| **ElementTree** | Parsing de XML                    |
+| **python-docx** | Manipulação e geração de DOCX     |
+| **Pygments**    | Tokenização e syntax highlighting |
+| **lxml**        | Processamento XML                 |
+| **pytest**      | Testes automatizados              |
+| **tkinterdnd2** | Drag & Drop opcional              |
+| **JSON**        | Persistência local                |
+| **logging**     | Logs e diagnóstico                |
+
+---
+
+# Estrutura do projeto
+
+```text
+AutomacaoArtefatos/
+│
+├── supra.py
+│
+├── Modelo de Artefato.docx
+│
+├── requirements.txt
+├── requirements-dev.txt
+│
+├── tests/
+│   ├── conftest.py
+│   ├── test_comparacao.py
+│   ├── test_extracao.py
+│   ├── test_nome_arquivo.py
+│   ├── test_propriedades_campos.py
+│   │
+│   └── fixtures/
+│       ├── ...
+│
+└── .gitignore
+```
+
+A suíte de testes está organizada por responsabilidade, com fixtures específicas para reproduzir cenários de extração e comparação.
+
+---
+
+# Instalação
+
+## Pré-requisitos
+
+* Python 3.x
+* Windows recomendado para utilização da aplicação desktop
+
+Clone o projeto:
+
+```bash
+git clone https://github.com/gbrielzera/AutomacaoArtefatos.git
+cd AutomacaoArtefatos
+```
+
+Crie um ambiente virtual:
+
+```bash
+python -m venv .venv
+```
+
+Ative no Windows:
+
+```bash
+.venv\Scripts\activate
+```
+
+Instale as dependências:
+
+```bash
+pip install -r requirements.txt
+```
+
+Para desenvolvimento:
+
+```bash
+pip install -r requirements-dev.txt
 ```
 
 ---
 
-## Decisões de engenharia
+# Executando
 
-### Separação entre interface e processamento
-
-A lógica de extração do XML foi mantida em funções independentes da GUI.
-
-Isso facilita:
-
-- testes;
-- manutenção;
-- debugging;
-- reutilização da lógica;
-- evolução do parser sem acoplamento excessivo à interface.
-
----
-
-### Deduplicação contextual
-
-A aplicação não utiliza apenas o código do script como chave de deduplicação.
-
-O **contexto e o local de execução** também são considerados.
-
-Isso permite preservar ocorrências legítimas do mesmo código em pontos diferentes do processo.
-
----
-
-### Foco em dados autoritativos
-
-Quando existem múltiplas representações de uma informação dentro do XML, a extração prioriza a estrutura considerada mais confiável para aquele dado e utiliza alternativas apenas como fallback.
-
-Isso reduz o risco de documentar informações provenientes de elementos secundários do processo.
-
----
-
-### Tolerância a falhas
-
-Falhas em configurações locais ou em recursos auxiliares, como Drag & Drop, não devem impedir a execução principal quando não forem essenciais ao processamento.
-
-A aplicação também possui tratamento específico para exceções inesperadas, evitando que erros ocorram de forma silenciosa.
-
----
-
-## Impacto
-
-O projeto foi concebido para atacar uma classe comum de problemas em ambientes corporativos:
-
-> **tarefas operacionais repetitivas que exigem atenção humana, mas que trabalham sobre dados que já estão estruturados.**
-
-A automação reduz a necessidade de:
-
-- navegar manualmente por estruturas complexas;
-- copiar grandes blocos de código;
-- localizar scripts individualmente;
-- preencher repetidamente informações deriváveis;
-- revisar documentos procurando inconsistências de transcrição.
-
-Mais do que automatizar um documento, o projeto demonstra uma abordagem de **engenharia de automação orientada a dados**, combinando:
-
-```text
-Parsing
-   +
-Transformação
-   +
-Validação
-   +
-Geração de documentos
-   +
-Observabilidade
-   +
-Experiência do usuário
+```bash
+python supra.py
 ```
 
----
+A interface gráfica será iniciada.
 
-## Sobre o projeto
-
-Este projeto representa a aplicação prática de conceitos de:
-
-- **Engenharia de Software**
-- **Python**
-- **Automação de processos**
-- **Processamento de dados estruturados**
-- **Parsing de XML**
-- **Geração e manipulação de documentos**
-- **Testes automatizados**
-- **Tratamento de exceções**
-- **Observabilidade**
-- **Desenvolvimento de aplicações desktop**
-
-A ideia central é simples:
-
-> ### **Se a informação já existe em formato estruturado, o usuário não deveria precisar digitá-la novamente.**
+A partir dela é possível selecionar os arquivos necessários e executar o processamento.
 
 ---
 
-## 📄 Licença
+# Distribuição
+
+A aplicação foi projetada para também poder ser distribuída como um executável desktop.
+
+A experiência esperada para o usuário final é:
+
+```text
+        Usuário
+           │
+           ▼
+      Aplicação
+           │
+     ┌─────┴─────┐
+     ▼           ▼
+   XML       Modelo DOCX
+     │           │
+     └─────┬─────┘
+           ▼
+    Processamento
+           │
+           ▼
+   Artefato final
+```
+
+O objetivo é que o usuário final não precise conhecer a implementação interna nem possuir conhecimento de Python.
+
+---
+
+# Impacto
+
+O projeto foi criado para automatizar uma tarefa que possui três características:
+
+```text
+Dados estruturados
+        +
+Processo repetitivo
+        +
+Necessidade de precisão
+```
+
+Esse é exatamente o tipo de cenário onde automação pode gerar grande valor.
+
+A solução reduz a necessidade de:
+
+* copiar informações manualmente;
+* procurar elementos em estruturas complexas;
+* comparar versões visualmente;
+* copiar scripts;
+* identificar alterações uma a uma;
+* formatar código manualmente;
+* revisar documentos extensos em busca de inconsistências.
+
+Mais importante:
+
+**o sistema transforma uma operação manual em uma operação determinística e reproduzível.**
+
+---
+
+# Evolução do projeto
+
+O projeto começou com uma proposta simples:
+
+```text
+XML → DOCX
+```
+
+e evoluiu para:
+
+```text
+                 ┌───────────────┐
+                 │ Versão antiga │
+                 └───────┬───────┘
+                         │
+                         ▼
+                      Parser
+                         │
+                         ▼
+                   Dados estruturados
+                         │
+                         │
+                         ▼
+                    COMPARAÇÃO
+                         ▲
+                         │
+                   Dados estruturados
+                         ▲
+                         │
+                      Parser
+                         ▲
+                         │
+                 ┌───────┴───────┐
+                 │ Versão atual  │
+                 └───────────────┘
+                         │
+                         ▼
+                 Diferenças detectadas
+                         │
+                         ▼
+                   Documento DOCX
+```
+
+Essa evolução mudou o papel da aplicação:
+
+> **de um simples gerador de documentos para uma ferramenta de análise e documentação de mudanças em processos.**
+
+---
+
+# Próximos passos
+
+Algumas evoluções naturais do projeto incluem:
+
+* interface dedicada para visualização das diferenças;
+* diff visual entre scripts;
+* comparação de múltiplas versões;
+* suporte a diferentes modelos de documentação;
+* validação automática do DOCX gerado;
+* relatórios em outros formatos;
+* histórico de artefatos;
+* maior cobertura de testes;
+* pipeline automatizado de build;
+* distribuição simplificada do executável;
+* separação ainda maior entre domínio, infraestrutura e apresentação.
+
+---
+
+# Sobre
+
+Este projeto demonstra a aplicação prática de conceitos de **Engenharia de Software e Automação** para transformar uma atividade manual em um processo sistematizado.
+
+Entre os conceitos aplicados estão:
+
+* processamento de dados estruturados;
+* parsing de XML;
+* comparação de versões;
+* análise contextual;
+* geração automatizada de documentos;
+* syntax highlighting;
+* testes automatizados;
+* tratamento de exceções;
+* logging;
+* persistência local;
+* desenvolvimento desktop;
+* preocupação com experiência do usuário.
+
+A premissa é simples:
+
+> ## **Automação não é apenas fazer uma tarefa mais rápido.**
+>
+> ## **É transformar uma tarefa repetitiva em um processo confiável, reproduzível e escalável.**
+
+---
+
+## Licença
 
 Consulte o repositório para informações sobre licenciamento e uso do projeto.
