@@ -40,6 +40,8 @@ build/
 dist/
 *.manifest
 *.spec
+# A receita de empacotamento é versionada: ela guarda o que precisa entrar no .exe
+!supra.spec
 
 # ==========================================
 # Configurações de IDEs e Editores

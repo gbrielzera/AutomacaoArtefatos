@@ -27,11 +27,40 @@ except ImportError:
     DND_DISPONIVEL = False
 
 
+# Créditos exibidos no rodapé da janela.
+AUTOR_APP = "Gabriel Cézar Peres Matos"
+
+# O modelo de artefato é sempre o mesmo, então acompanha a aplicação e é usado
+# automaticamente: o usuário só precisa selecionar outro se quiser fugir do padrão.
+NOME_TEMPLATE_PADRAO = "Modelo de Artefato.docx"
+
+
 def get_base_dir():
     """Retorna a pasta do executável (.exe) ou do script .py, para localizar a pasta de logs."""
     if getattr(sys, 'frozen', False):
         return os.path.dirname(sys.executable)
     return os.path.dirname(os.path.abspath(__file__))
+
+
+def get_template_padrao() -> str:
+    """
+    Devolve o caminho do modelo de artefato que acompanha a aplicação.
+
+    Procura primeiro na pasta temporária do PyInstaller (``sys._MEIPASS``, usada quando
+    o .exe embute o arquivo) e depois ao lado do executável/script. Retorna o caminho
+    ao lado do executável mesmo quando o arquivo não existe, para que a mensagem de erro
+    mostre onde ele era esperado.
+
+    Returns:
+        str: Caminho absoluto do "Modelo de Artefato.docx" padrão.
+    """
+    caminho_base = os.path.join(get_base_dir(), NOME_TEMPLATE_PADRAO)
+    pasta_empacotada = getattr(sys, "_MEIPASS", "")
+    if pasta_empacotada:
+        caminho_empacotado = os.path.join(pasta_empacotada, NOME_TEMPLATE_PADRAO)
+        if os.path.isfile(caminho_empacotado):
+            return caminho_empacotado
+    return caminho_base
 
 
 def limpar_nome_arquivo(nome):
@@ -668,7 +697,8 @@ class SupravizioDocApp:
         self.root.resizable(True, True)
 
         self.xml_path = ""
-        self.template_path = ""
+        # Já começa no modelo que acompanha a aplicação; só muda se o usuário escolher outro.
+        self.template_path = get_template_padrao()
         self.output_dir = ""
 
         # Aba de comparação (v2): os dois XMLs do mesmo fluxo em versões diferentes.
@@ -693,6 +723,10 @@ class SupravizioDocApp:
         # =========================
         # ABAS
         # =========================
+        # O rodapé é empacotado antes do notebook para que o Tk reserve a faixa de baixo
+        # antes de entregar o espaço restante às abas (que expandem).
+        self._construir_rodape(root)
+
         self.notebook = ttk.Notebook(root)
         self.notebook.pack(fill="both", expand=True)
 
@@ -705,6 +739,25 @@ class SupravizioDocApp:
         self._construir_aba_comparacao(aba_comparacao)
 
         self._carregar_historico()
+
+    # ==========================================================
+    # RODAPÉ (créditos)
+    # ==========================================================
+    def _construir_rodape(self, root) -> None:
+        """Cria a faixa de créditos fixa no rodapé da janela.
+
+        Args:
+            root: Widget pai (a janela principal) onde o rodapé é ancorado.
+        """
+        rodape = tk.Frame(root, bd=1, relief="flat")
+        rodape.pack(side="bottom", fill="x")
+
+        tk.Frame(rodape, height=1, bg="#CCCCCC").pack(fill="x")
+        tk.Label(
+            rodape,
+            text=f"Desenvolvido por {AUTOR_APP}",
+            fg="gray", font=("Arial", 8), anchor="center"
+        ).pack(fill="x", pady=3)
 
     # ==========================================================
     # ABA 1 — ARTEFATO DE UM ÚNICO FLUXO (v1)
@@ -754,12 +807,18 @@ class SupravizioDocApp:
         if DND_DISPONIVEL:
             self._registrar_alvo_drop((self.btn_xml, self.lbl_xml), self.lbl_xml, self._definir_xml)
 
-        self.btn_template = tk.Button(frame_files, text="2. Selecionar Template DOCX", command=self.load_template)
-        self.btn_template.pack(fill="x", pady=2)
-        self.lbl_template = tk.Label(frame_files, text="Nenhum template DOCX selecionado", fg="gray", anchor="w")
-        self.lbl_template.pack(fill="x", pady=(0, 10))
+        # O template é fixo (acompanha a aplicação); fica só como informação, com a opção
+        # de trocar para quem precisar usar outro modelo pontualmente.
+        linha_template = tk.Frame(frame_files)
+        linha_template.pack(fill="x", pady=(0, 10))
+        self.btn_template = tk.Button(
+            linha_template, text="Trocar template...", command=self.load_template, font=("Arial", 8)
+        )
+        self.btn_template.pack(side="right", padx=(6, 0))
+        self.lbl_template = tk.Label(linha_template, text="", fg="gray", anchor="w")
+        self.lbl_template.pack(side="left", fill="x", expand=True)
 
-        self.btn_dir = tk.Button(frame_files, text="3. Selecionar Pasta de Destino", command=self.load_dir)
+        self.btn_dir = tk.Button(frame_files, text="2. Selecionar Pasta de Destino", command=self.load_dir)
         self.btn_dir.pack(fill="x", pady=2)
         self.lbl_dir = tk.Label(frame_files, text="Nenhuma pasta selecionada", fg="gray", anchor="w")
         self.lbl_dir.pack(fill="x")
@@ -844,17 +903,17 @@ class SupravizioDocApp:
                 (self.btn_xml_depois, self.lbl_xml_depois), self.lbl_xml_depois, self._definir_xml_depois
             )
 
+        linha_template_cmp = tk.Frame(frame_files)
+        linha_template_cmp.pack(fill="x", pady=(0, 8))
         self.btn_template_cmp = tk.Button(
-            frame_files, text="3. Selecionar Template DOCX", command=self.load_template
+            linha_template_cmp, text="Trocar template...", command=self.load_template, font=("Arial", 8)
         )
-        self.btn_template_cmp.pack(fill="x", pady=2)
-        self.lbl_template_cmp = tk.Label(
-            frame_files, text="Nenhum template DOCX selecionado", fg="gray", anchor="w"
-        )
-        self.lbl_template_cmp.pack(fill="x", pady=(0, 8))
+        self.btn_template_cmp.pack(side="right", padx=(6, 0))
+        self.lbl_template_cmp = tk.Label(linha_template_cmp, text="", fg="gray", anchor="w")
+        self.lbl_template_cmp.pack(side="left", fill="x", expand=True)
 
         self.btn_dir_cmp = tk.Button(
-            frame_files, text="4. Selecionar Pasta de Destino", command=self.load_dir
+            frame_files, text="3. Selecionar Pasta de Destino", command=self.load_dir
         )
         self.btn_dir_cmp.pack(fill="x", pady=2)
         self.lbl_dir_cmp = tk.Label(frame_files, text="Nenhuma pasta selecionada", fg="gray", anchor="w")
@@ -912,10 +971,16 @@ class SupravizioDocApp:
         Template e pasta de destino são os mesmos para as duas abas; este método mantém
         os rótulos das duas sincronizados quando um deles é alterado.
         """
-        if self.template_path:
-            texto_template, cor = os.path.basename(self.template_path), "black"
+        nome_template = os.path.basename(self.template_path)
+        if not os.path.isfile(self.template_path):
+            texto_template = f"Template não encontrado: {nome_template}"
+            cor = "#C62828"
+        elif self._usando_template_padrao():
+            texto_template = f"Template: {nome_template} (padrão da aplicação)"
+            cor = "gray"
         else:
-            texto_template, cor = "Nenhum template DOCX selecionado", "gray"
+            texto_template = f"Template: {nome_template}"
+            cor = "black"
         self.lbl_template.config(text=texto_template, fg=cor)
         self.lbl_template_cmp.config(text=texto_template, fg=cor)
 
@@ -1194,6 +1259,35 @@ class SupravizioDocApp:
                 fg="#2E7D32"
             )
 
+    def _usando_template_padrao(self) -> bool:
+        """Informa se o template em uso é o modelo que acompanha a aplicação."""
+        if not self.template_path:
+            return False
+        return os.path.abspath(self.template_path) == os.path.abspath(get_template_padrao())
+
+    def _template_disponivel(self) -> bool:
+        """
+        Verifica se há um template legível para gerar o artefato.
+
+        Avisa o usuário e registra no log quando o modelo padrão não está na pasta da
+        aplicação, já que nesse caso não há o que ler e a geração não pode seguir.
+
+        Returns:
+            bool: True se o arquivo de template existe; False caso contrário.
+        """
+        if self.template_path and os.path.isfile(self.template_path):
+            return True
+
+        caminho = self.template_path or get_template_padrao()
+        self.logger.error(f"Template DOCX não encontrado: '{caminho}'")
+        messagebox.showerror(
+            "Template não encontrado",
+            f"Não foi possível encontrar o modelo de artefato:\n\n{caminho}\n\n"
+            f"Verifique se o arquivo '{NOME_TEMPLATE_PADRAO}' está na pasta da aplicação "
+            f"ou use 'Trocar template...' para escolher outro."
+        )
+        return False
+
     def load_template(self):
         caminho = filedialog.askopenfilename(title="Selecionar DOCX", filetypes=[("Word", "*.docx")])
         if not caminho:
@@ -1375,8 +1469,10 @@ class SupravizioDocApp:
         self._atualizar_progresso(self.lbl_status_cmp, self.progress_cmp, texto, passo)
 
     def gerar_documento(self):
-        if not self.xml_path or not self.template_path or not self.output_dir:
-            messagebox.showerror("Erro", "Preencha todos os caminhos (XML, Template e Pasta).")
+        if not self.xml_path or not self.output_dir:
+            messagebox.showerror("Erro", "Selecione o XML do fluxo e a pasta de destino.")
+            return
+        if not self._template_disponivel():
             return
 
         self.logger.info("=== Iniciando geração do artefato ===")
@@ -1534,8 +1630,10 @@ class SupravizioDocApp:
         if not self.xml_antes_path or not self.xml_depois_path:
             messagebox.showerror("Erro", "Selecione os dois XMLs (versão anterior e versão nova).")
             return
-        if not self.template_path or not self.output_dir:
-            messagebox.showerror("Erro", "Selecione o Template DOCX e a Pasta de destino.")
+        if not self.output_dir:
+            messagebox.showerror("Erro", "Selecione a pasta de destino.")
+            return
+        if not self._template_disponivel():
             return
         if os.path.abspath(self.xml_antes_path) == os.path.abspath(self.xml_depois_path):
             messagebox.showerror("Erro", "Os dois XMLs são o mesmo arquivo. Selecione versões diferentes.")

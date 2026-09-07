@@ -382,6 +382,8 @@ Processar
 Gerar documentação
 ```
 
+O modelo de artefato é sempre o mesmo, então ele acompanha a aplicação (`Modelo de Artefato.docx`, na pasta do executável/script) e é carregado automaticamente — não é preciso selecioná-lo a cada execução. A opção **Trocar template...** continua disponível para quem precisar usar outro modelo pontualmente.
+
 Também existe suporte opcional a **Drag & Drop** através de `tkinterdnd2`.
 
 Caso a biblioteca não esteja disponível, a aplicação continua funcionando utilizando a interface convencional do Tkinter.
@@ -594,21 +596,16 @@ A partir dela é possível selecionar os arquivos necessários e executar o proc
 
 # Distribuição
 
-A aplicação foi projetada para também poder ser distribuída como um executável desktop.
+A aplicação é distribuída como um executável desktop único, gerado com **PyInstaller**.
 
 A experiência esperada para o usuário final é:
 
 ```text
         Usuário
            │
-           ▼
-      Aplicação
+           ▼ (só o XML do fluxo)
+      Aplicação  ──── Modelo DOCX (embutido no .exe)
            │
-     ┌─────┴─────┐
-     ▼           ▼
-   XML       Modelo DOCX
-     │           │
-     └─────┬─────┘
            ▼
     Processamento
            │
@@ -617,6 +614,32 @@ A experiência esperada para o usuário final é:
 ```
 
 O objetivo é que o usuário final não precise conhecer a implementação interna nem possuir conhecimento de Python.
+
+## Gerando o executável
+
+O empacotamento é descrito em `supra.spec`, que já embute no `.exe` tudo o que a aplicação precisa: o `Modelo de Artefato.docx`, os binários do `tkdnd` (arrastar-e-soltar), os templates internos do `python-docx` e os lexers do Pygments.
+
+```bash
+pip install -r requirements-dev.txt
+pyinstaller supra.spec
+```
+
+O resultado é um arquivo único em `dist/`:
+
+```text
+dist/
+└── Gerador de Artefato Supravizio.exe   (~22 MB)
+```
+
+Esse é o único arquivo que precisa ser compartilhado. Quem receber não precisa ter Python, nem as dependências, nem o modelo de artefato — basta dar um duplo clique.
+
+### Pontos de atenção
+
+* **O executável é específico da plataforma.** Um `.exe` para Windows precisa ser gerado no Windows; para distribuir em Linux ou macOS, rode o mesmo `pyinstaller supra.spec` no sistema correspondente.
+* **`logs/` e `config/settings.json` são criados ao lado do `.exe`**, não dentro dele. Vale distribuir o executável em uma pasta com permissão de escrita (evite `C:\Program Files` ou anexo de e-mail aberto direto do temporário).
+* **SmartScreen / antivírus.** Como o executável não é assinado digitalmente, o Windows pode exibir o aviso "O Windows protegeu o computador" na primeira execução (*Mais informações → Executar assim mesmo*). Para distribuição ampla, o caminho definitivo é assinar o binário com um certificado de code signing.
+* **Ícone personalizado.** Coloque um arquivo `.ico` na raiz do projeto e descomente a linha `icon=` no final de `supra.spec`.
+* **Trocando o modelo de artefato.** O modelo vai embutido no `.exe`; se ele mudar, basta gerar o executável de novo. Para um uso pontual com outro modelo, o usuário final pode clicar em **Trocar template...** na própria interface.
 
 ---
 
@@ -741,6 +764,12 @@ A premissa é simples:
 > ## **Automação não é apenas fazer uma tarefa mais rápido.**
 >
 > ## **É transformar uma tarefa repetitiva em um processo confiável, reproduzível e escalável.**
+
+---
+
+## Autor
+
+Desenvolvido por **Gabriel Cézar Peres Matos**.
 
 ---
 
