@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Abas de script do próprio campo, irmãs de "Modificado" na tela do Supravizio:
+  ScriptConfirmado e ScriptAdicionado. Antes eram descartadas por não constarem
+  no mapa de scripts conhecidos.
+-->
+<ModeloImportacaoXml>
+    <NomeSubProcesso>Fluxo Abas de Script</NomeSubProcesso>
+    <CustomProperty>
+        <Name>ITEM_LISTA</Name>
+        <TableName>Z_ITEM_LISTA</TableName>
+        <Text>Item da Lista</Text>
+        <Description>Item selecionado pelo usuário</Description>
+        <Type>String</Type>
+    </CustomProperty>
+    <Figuras>
+        <Figura>
+            <Atividade>
+                <Tipo>Tarefa</Tipo>
+                <Descricao>Selecionar item</Descricao>
+                <Operacoes>
+                    <OperacaoAtividade>
+                        <Campos>
+                            <CampoPreenchimento>
+                                <NomeCustomizado>ITEM_LISTA</NomeCustomizado>
+                                <FormaEdicaoWeb>Formulario</FormaEdicaoWeb>
+                                <ScriptConfirmado>ao_confirmar()</ScriptConfirmado>
+                                <ScriptAdicionado>ao_adicionar()</ScriptAdicionado>
+                            </CampoPreenchimento>
+                        </Campos>
+                    </OperacaoAtividade>
+                </Operacoes>
+            </Atividade>
+        </Figura>
+    </Figuras>
+</ModeloImportacaoXml>

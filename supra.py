@@ -70,6 +70,36 @@ def limpar_nome_arquivo(nome):
     return nome.strip() or "Supravizio"
 
 
+def montar_nome_artefato(nome_fluxo: str) -> str:
+    """
+    Monta o nome do artefato da aba de criação: "Artefato_{subprocesso}.docx".
+
+    Args:
+        nome_fluxo: Nome do subprocesso lido do XML.
+
+    Returns:
+        str: Nome do arquivo, já sanitizado e com extensão (ex.: "Artefato_Reembolso.docx").
+    """
+    return f"Artefato_{limpar_nome_arquivo(nome_fluxo)}.docx"
+
+
+def montar_nome_artefato_comparacao(nome_fluxo: str) -> str:
+    """
+    Monta o nome do artefato comparativo: "{subprocesso}.docx".
+
+    Diferente da aba de criação, o comparativo NÃO leva o prefixo "Artefato_" — é assim
+    que os dois se distinguem na pasta de destino, já que nenhum dos dois carrega o
+    número da versão no nome.
+
+    Args:
+        nome_fluxo: Nome do subprocesso lido do XML.
+
+    Returns:
+        str: Nome do arquivo, já sanitizado e com extensão (ex.: "Reembolso.docx").
+    """
+    return f"{limpar_nome_arquivo(nome_fluxo)}.docx"
+
+
 class BufferLogHandler(logging.Handler):
     """
     Acumula as mensagens em memória para que cada artefato gerado receba o seu próprio
@@ -250,9 +280,31 @@ def extrair_propriedades_campos(root):
                 # "Lista de Itens" da tabela de Campos alterados.
                 "controle": get_texto(prop, "Control"),
                 "lista_itens": get_texto(prop, "ListItems"),
+                # Campos de grade (Type='RecordList') declaram suas colunas aqui.
+                # Serve para dar nome legível às colunas ao descrever os scripts da grid,
+                # já que o <CampoPreenchimentoRegistro> só traz o nome técnico da coluna.
+                "colunas": _extrair_colunas_registro(prop),
             }
 
     return propriedades
+
+
+def _extrair_colunas_registro(prop):
+    """
+    Mapeia as colunas de um campo de grade: {nome técnico: rótulo exibido}.
+
+    Args:
+        prop: Nó <CustomProperty> que pode conter <RecordColumns>.
+
+    Returns:
+        dict: Nome da coluna -> rótulo. Vazio quando o campo não é uma grade.
+    """
+    colunas = {}
+    for col in prop.findall("./RecordColumns/RecordColumn"):
+        nome_col = get_texto(col, "Name")
+        if nome_col:
+            colunas[nome_col] = get_texto(col, "Text") or nome_col
+    return colunas
 
 
 def separar_lista_itens(texto):
@@ -387,13 +439,16 @@ def extrair_dados_xml(xml_path, logger):
         "ScriptFim": "de fim",
         "ScriptVolta": "de volta",
         "ScriptEvento": "de evento",
+        # Abas de script do próprio campo, irmãs de "Modificado" na tela do Supravizio.
+        "ScriptConfirmado": "confirmado",
+        "ScriptAdicionado": "adicionado",
     }
 
-    # Scripts que ficam aninhados sob outro nó da atividade, e não como filho direto.
-    mapa_scripts_aninhados = {
-        "PapelResponsavel/PapelClasseNegocio/ScriptSelecaoAtores": "de seleção de atores (papel responsável)",
-        "PapelDestinatario/PapelClasseNegocio/ScriptSelecaoAtores": "de seleção de atores (papel destinatário)",
-    }
+    # NÃO extraímos <ScriptSelecaoAtores> (papel responsável, destinatário, aprovador,
+    # composição de papéis e autorizado). É uma decisão de conteúdo, não uma lacuna:
+    # esses scripts já foram extraídos e saíram de propósito, porque a documentação do
+    # artefato não precisa registrar como os atores são escolhidos. Chegavam a um terço
+    # de tudo que era listado, afogando os scripts que realmente interessam.
 
     campos_vistos = set()
     anexos_vistos = set()
@@ -460,6 +515,25 @@ def extrair_dados_xml(xml_path, logger):
                                     sc_code
                                 )
 
+                        # Campos de grade: cada coluna é um <CampoPreenchimentoRegistro> com
+                        # suas PRÓPRIAS abas de script, que ficam fora do <CampoPreenchimento>
+                        # pai. Sem este laço, todo script de coluna de grade era descartado.
+                        colunas_da_grade = prop_campo.get("colunas", {})
+                        for campo_reg in campo.findall("./CamposPreenchimentoRegistro/CampoPreenchimentoRegistro"):
+                            nome_col = get_texto(campo_reg, "Nome")
+                            # O rótulo vem do RecordColumn; quando a coluna não está declarada
+                            # lá (nomes divergentes acontecem), cai para o nome técnico.
+                            rotulo_col = colunas_da_grade.get(nome_col, nome_col) or "coluna sem nome"
+
+                            for tag_xml, nome_amigavel in mapa_scripts.items():
+                                s_node = campo_reg.find(tag_xml)
+                                if s_node is not None and s_node.text and s_node.text.strip():
+                                    registrar_script(
+                                        f"Atividade: {nome_atv} | Script {nome_amigavel} "
+                                        f"na coluna '{rotulo_col}' da GRID: {nome_c}",
+                                        s_node.text.strip()
+                                    )
+
                 for tag_xml, nome_amigavel in mapa_scripts.items():
                     s_node = op.find(tag_xml)
                     if s_node is not None and s_node.text and s_node.text.strip():
@@ -469,7 +543,7 @@ def extrair_dados_xml(xml_path, logger):
                             sc_code
                         )
 
-            for tag_xml, nome_amigavel in list(mapa_scripts.items()) + list(mapa_scripts_aninhados.items()):
+            for tag_xml, nome_amigavel in mapa_scripts.items():
                 s_node = atividade.find(tag_xml)
                 if s_node is not None and s_node.text and s_node.text.strip():
                     sc_code = s_node.text.strip()
@@ -1468,6 +1542,33 @@ class SupravizioDocApp:
         """Progresso da aba 2 (comparação entre versões)."""
         self._atualizar_progresso(self.lbl_status_cmp, self.progress_cmp, texto, passo)
 
+    def _confirmar_sobrescrita(self, caminho):
+        """
+        Pergunta antes de substituir um arquivo que já existe na pasta de destino.
+
+        O nome do artefato vem do subprocesso, então gerar o mesmo fluxo duas vezes —
+        ou usar uma pasta que já tenha um documento de mesmo nome — sobrescreveria o
+        arquivo sem aviso. O padrão do diálogo é NÃO, para que um Enter distraído não
+        apague nada.
+
+        Args:
+            caminho: Caminho completo do arquivo que está prestes a ser gravado.
+
+        Returns:
+            bool: True se pode gravar (não existe, ou o usuário confirmou a substituição).
+        """
+        if not os.path.exists(caminho):
+            return True
+
+        return messagebox.askyesno(
+            "Arquivo já existe",
+            f"Já existe um arquivo com este nome na pasta de destino:\n\n"
+            f"{os.path.basename(caminho)}\n\n"
+            f"Deseja substituí-lo?",
+            icon=messagebox.WARNING,
+            default=messagebox.NO,
+        )
+
     def gerar_documento(self):
         if not self.xml_path or not self.output_dir:
             messagebox.showerror("Erro", "Selecione o XML do fluxo e a pasta de destino.")
@@ -1594,8 +1695,12 @@ class SupravizioDocApp:
                     row.cells[1].text = a["sigla"]
                     row.cells[2].text = "Sim"
 
-            nome_arquivo = limpar_nome_arquivo(dados["nome_fluxo"])
-            caminho_completo = os.path.join(self.output_dir, f"Artefato_{nome_arquivo}.docx")
+            caminho_completo = os.path.join(self.output_dir, montar_nome_artefato(dados["nome_fluxo"]))
+            if not self._confirmar_sobrescrita(caminho_completo):
+                self.logger.info(f"Geração cancelada pelo usuário: '{caminho_completo}' já existe.")
+                self._set_status("Cancelado.", 0)
+                self.gravar_log(nome_fluxo)
+                return
 
             self._set_status("Salvando documento...", 6)
             doc.save(caminho_completo)
@@ -1689,14 +1794,13 @@ class SupravizioDocApp:
             self._set_status_cmp("Preenchendo o que mudou...", 5)
             self._preencher_documento_comparacao(doc, comp, macro, proc, desc, evid)
 
-            versao_antes = extrair_versao_do_nome_arquivo(self.xml_antes_path)
-            versao_depois = extrair_versao_do_nome_arquivo(self.xml_depois_path)
-            nome_arquivo = limpar_nome_arquivo(nome_fluxo)
-            if versao_antes and versao_depois:
-                nome_arquivo = f"{nome_arquivo}_v{versao_antes}_para_v{versao_depois}"
-            else:
-                nome_arquivo = f"{nome_arquivo}_Comparacao"
-            caminho_completo = os.path.join(self.output_dir, f"Artefato_{nome_arquivo}.docx")
+            # Sem número de versão e sem o prefixo "Artefato_", que fica só na aba de criação.
+            caminho_completo = os.path.join(self.output_dir, montar_nome_artefato_comparacao(nome_fluxo))
+            if not self._confirmar_sobrescrita(caminho_completo):
+                self.logger.info(f"Geração cancelada pelo usuário: '{caminho_completo}' já existe.")
+                self._set_status_cmp("Cancelado.", 0)
+                self.gravar_log(nome_fluxo)
+                return
 
             self._set_status_cmp("Salvando documento...", 6)
             doc.save(caminho_completo)

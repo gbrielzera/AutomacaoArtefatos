@@ -192,6 +192,17 @@ Incluídos: Transporte
 Removidos: Obsoleto
 ```
 
+### Nome do arquivo gerado
+
+Nenhum dos dois artefatos leva o número da versão no nome. O que os distingue é o prefixo, de modo que os dois podem conviver na mesma pasta de destino:
+
+```text
+Artefato_{subprocesso}.docx   ← aba de criação
+{subprocesso}.docx            ← aba de comparação
+```
+
+Se já houver um arquivo com o mesmo nome na pasta de destino, a aplicação pede confirmação antes de substituí-lo. O padrão do diálogo é **não** substituir.
+
 ---
 
 # Análise contextual de scripts
@@ -358,9 +369,14 @@ A aplicação trabalha com diferentes categorias de informações.
 * fim;
 * eventos;
 * retorno;
-* seleção de atores;
+* confirmado e adicionado;
+* scripts das colunas de campos de grade (`RecordList`);
 * expressões;
 * regras de decisão.
+
+As colunas de um campo de grade guardam suas próprias abas de script, separadas das do campo que as contém. Cada script de coluna é identificado no artefato pelo rótulo da coluna e pelo nome da grid a que pertence — o artefato usa o termo **GRID**, que é como a equipe técnica se refere a esses campos.
+
+Os scripts de **seleção de atores** (`ScriptSelecaoAtores`) ficam deliberadamente de fora: o artefato não precisa registrar como os atores de cada atividade são escolhidos, e eles chegavam a um terço de tudo que era listado.
 
 ---
 

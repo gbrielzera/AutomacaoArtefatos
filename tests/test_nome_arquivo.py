@@ -30,3 +30,31 @@ def test_limpar_nome_arquivo_remove_caracteres_invalidos(mod):
 def test_limpar_nome_arquivo_vazio_retorna_fallback(mod):
     assert mod.limpar_nome_arquivo("") == "Supravizio"
     assert mod.limpar_nome_arquivo("   ") == "Supravizio"
+
+
+def test_nome_artefato_criacao(mod):
+    assert mod.montar_nome_artefato("Reembolso") == "Artefato_Reembolso.docx"
+
+
+def test_nome_artefato_comparacao_nao_leva_versao_nem_prefixo(mod):
+    """
+    Regressão: a aba de comparação gerava "Artefato_Reembolso_v44_para_v45.docx".
+    O comparativo perde o número da versão E o prefixo "Artefato_" — é o prefixo que
+    passa a diferenciar os dois artefatos do mesmo fluxo na pasta de destino.
+    """
+    assert mod.montar_nome_artefato_comparacao("Reembolso") == "Reembolso.docx"
+
+
+def test_nomes_das_duas_abas_nao_colidem(mod):
+    """Gerar os dois artefatos do mesmo fluxo na mesma pasta não pode sobrescrever nada."""
+    assert mod.montar_nome_artefato("Reembolso") != mod.montar_nome_artefato_comparacao("Reembolso")
+
+
+def test_nome_artefato_sanitiza_subprocesso(mod):
+    assert mod.montar_nome_artefato("Publicação no DOU: Extrato") == "Artefato_Publicação no DOU_ Extrato.docx"
+    assert mod.montar_nome_artefato_comparacao("Publicação no DOU: Extrato") == "Publicação no DOU_ Extrato.docx"
+
+
+def test_nome_artefato_sem_nome_de_fluxo_usa_fallback(mod):
+    assert mod.montar_nome_artefato("") == "Artefato_Supravizio.docx"
+    assert mod.montar_nome_artefato_comparacao("") == "Supravizio.docx"

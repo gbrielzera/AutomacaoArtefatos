@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Atividade com script de seleção de atores E um script comum.
+  Só o comum deve entrar no artefato: <ScriptSelecaoAtores> é excluído de propósito.
+-->
+<ModeloImportacaoXml>
+    <NomeSubProcesso>Fluxo com Selecao de Atores</NomeSubProcesso>
+    <Figuras>
+        <Figura>
+            <Atividade>
+                <Tipo>Tarefa</Tipo>
+                <Descricao>Aprovar solicitação</Descricao>
+                <ScriptInicio>script_de_inicio()</ScriptInicio>
+                <PapelResponsavel>
+                    <PapelClasseNegocio>
+                        <ScriptSelecaoAtores>escolhe_responsavel()</ScriptSelecaoAtores>
+                    </PapelClasseNegocio>
+                </PapelResponsavel>
+                <PapelDestinatario>
+                    <PapelClasseNegocio>
+                        <ScriptSelecaoAtores>escolhe_destinatario()</ScriptSelecaoAtores>
+                    </PapelClasseNegocio>
+                </PapelDestinatario>
+                <Aprovador>
+                    <PapelAprovador>
+                        <PapelClasseNegocio>
+                            <ScriptSelecaoAtores>escolhe_aprovador()</ScriptSelecaoAtores>
+                        </PapelClasseNegocio>
+                    </PapelAprovador>
+                </Aprovador>
+            </Atividade>
+        </Figura>
+    </Figuras>
+</ModeloImportacaoXml>

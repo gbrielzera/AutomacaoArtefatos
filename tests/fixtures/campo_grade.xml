@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Campo de grade (CustomProperty Type='RecordList'): as colunas ficam em
+  <RecordColumns> e cada coluna tem suas PRÓPRIAS abas de script, guardadas em
+  <CamposPreenchimentoRegistro>, fora do <CampoPreenchimento> pai.
+  Cobre também a coluna cujo <Nome> não consta em RecordColumns (COLUNA_ORFA).
+-->
+<ModeloImportacaoXml>
+    <NomeSubProcesso>Fluxo com Grade</NomeSubProcesso>
+    <CustomProperty>
+        <Name>DADOS_BEM</Name>
+        <TableName>Z_DADOS_BEM</TableName>
+        <Text>Dados do Bem</Text>
+        <Description>Grade com os bens informados</Description>
+        <Type>RecordList</Type>
+        <RecordColumns>
+            <RecordColumn>
+                <Name>NUM_PATRIM</Name>
+                <Text>Número de Patrimônio</Text>
+                <Type>String</Type>
+            </RecordColumn>
+            <RecordColumn>
+                <Name>PLANTA</Name>
+                <Text>Local - Planta</Text>
+                <Type>String</Type>
+            </RecordColumn>
+        </RecordColumns>
+    </CustomProperty>
+    <Figuras>
+        <Figura>
+            <Atividade>
+                <Tipo>EventoInicial</Tipo>
+                <Descricao>Transferência de Bem</Descricao>
+                <Operacoes>
+                    <OperacaoAtividade>
+                        <Campos>
+                            <CampoPreenchimento>
+                                <NomeCustomizado>DADOS_BEM</NomeCustomizado>
+                                <FormaEdicaoWeb>Formulario</FormaEdicaoWeb>
+                                <ScriptModificado>script_do_campo_pai()</ScriptModificado>
+                                <CamposPreenchimentoRegistro>
+                                    <CampoPreenchimentoRegistro>
+                                        <Nome>NUM_PATRIM</Nome>
+                                        <ScriptModificado>busca_patrimonio()</ScriptModificado>
+                                    </CampoPreenchimentoRegistro>
+                                    <CampoPreenchimentoRegistro>
+                                        <Nome>PLANTA</Nome>
+                                        <ScriptValidacao>valida_planta()</ScriptValidacao>
+                                    </CampoPreenchimentoRegistro>
+                                    <CampoPreenchimentoRegistro>
+                                        <Nome>COLUNA_ORFA</Nome>
+                                        <ScriptModificado>script_coluna_orfa()</ScriptModificado>
+                                    </CampoPreenchimentoRegistro>
+                                    <CampoPreenchimentoRegistro>
+                                        <Nome>SEM_SCRIPT</Nome>
+                                        <ScriptModificado>   </ScriptModificado>
+                                    </CampoPreenchimentoRegistro>
+                                </CamposPreenchimentoRegistro>
+                            </CampoPreenchimento>
+                        </Campos>
+                    </OperacaoAtividade>
+                </Operacoes>
+            </Atividade>
+        </Figura>
+    </Figuras>
+</ModeloImportacaoXml>

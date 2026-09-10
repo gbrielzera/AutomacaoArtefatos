@@ -18,6 +18,7 @@ config/
 # Saídas de Teste e Arquivos Temporários
 Saída dos artefatos/
 XMLs para teste/
+Outras versões de XMLs
 
 # Arquivos temporários gerados pelo Microsoft Word ao abrir documentos
 ~$*.docx
