@@ -1,0 +1,181 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Versão ANTERIOR do fluxo usado para testar a tabela "Campos alterados".
+
+  Cada campo cobre uma situação de tipo ou de origem da lista de itens. Compare com
+  comparacao_listas_depois.xml, que traz a versão nova do mesmo fluxo.
+-->
+<ModeloImportacaoXml>
+    <NomeSubProcesso>Fluxo Listas</NomeSubProcesso>
+
+    <!-- Lista fixa que, na versão nova, passa a ser carregada por script -->
+    <CustomProperty>
+        <Name>FIXA_PARA_SCRIPT</Name>
+        <TableName>CPE_LISTAS</TableName>
+        <Text>Fixa para script</Text>
+        <Description>Fixa para script</Description>
+        <Type>String</Type>
+        <Control>DropDownList</Control>
+        <ListItems>Contrato;Aditivo</ListItems>
+    </CustomProperty>
+
+    <!-- Carregado por script nas duas versões; a consulta SQL muda -->
+    <CustomProperty>
+        <Name>SCRIPT_ALTERADO</Name>
+        <TableName>CPE_LISTAS</TableName>
+        <Text>Script alterado</Text>
+        <Description>Script alterado</Description>
+        <Type>String</Type>
+        <Control>DropDownList</Control>
+        <LookupScript>import clr
+from System import *
+# INICIO SCRIPT USUARIO
+Itens = DB.ExecuteDataTable("SELECT ID, NOME FROM PESSOA")
+# FIM SCRIPT USUARIO</LookupScript>
+    </CustomProperty>
+
+    <!-- Mesmo script nas duas versões, só com espaço sobrando e fim de linha diferentes -->
+    <CustomProperty>
+        <Name>SCRIPT_MESMO_CODIGO</Name>
+        <TableName>CPE_LISTAS</TableName>
+        <Text>Script mesmo código</Text>
+        <Description>Script mesmo código</Description>
+        <Type>String</Type>
+        <Control>DropDownList</Control>
+        <LookupScript>import clr
+from System import *
+Itens = DB.ExecuteDataTable("SELECT ID, NOME FROM UNIDADE")</LookupScript>
+    </CustomProperty>
+
+    <!-- Script só com comentário (não carrega lista); só o texto do comentário muda -->
+    <CustomProperty>
+        <Name>SCRIPT_SO_COMENTARIO</Name>
+        <TableName>CPE_LISTAS</TableName>
+        <Text>Script só comentário</Text>
+        <Description>Script só comentário</Description>
+        <Type>String</Type>
+        <Control>TextBox</Control>
+        <LookupScript>import clr
+from System import *
+#Itens = DB.ExecuteDataTable("SELECT DESCRICAO FROM CIDADE")</LookupScript>
+    </CustomProperty>
+
+    <!-- Script só com comentário que, na versão nova, ganha código de verdade -->
+    <CustomProperty>
+        <Name>COMENTARIO_PARA_SCRIPT</Name>
+        <TableName>CPE_LISTAS</TableName>
+        <Text>Comentário para script</Text>
+        <Description>Comentário para script</Description>
+        <Type>String</Type>
+        <Control>DropDownList</Control>
+        <LookupScript>#Itens = DB.ExecuteDataTable("SELECT NOME FROM CIDADE")</LookupScript>
+    </CustomProperty>
+
+    <!-- Carregado por script que, na versão nova, vira lista fixa -->
+    <CustomProperty>
+        <Name>SCRIPT_PARA_FIXA</Name>
+        <TableName>CPE_LISTAS</TableName>
+        <Text>Script para fixa</Text>
+        <Description>Script para fixa</Description>
+        <Type>String</Type>
+        <Control>DropDownList</Control>
+        <LookupScript>Itens = DB.ExecuteDataTable("SELECT NOME FROM STATUS")</LookupScript>
+    </CustomProperty>
+
+    <!-- Lista de uma classe de negócio; a classe é trocada na versão nova -->
+    <CustomProperty>
+        <Name>CLASSE_ALTERADA</Name>
+        <TableName>CPE_LISTAS</TableName>
+        <Text>Classe alterada</Text>
+        <Description>Classe alterada</Description>
+        <Type>String</Type>
+        <Control>DropDownList</Control>
+        <ClassReference>
+            <Name>Venki.Supravizio.Recurso.Orgao, Supravizio</Name>
+            <Text>Área</Text>
+        </ClassReference>
+    </CustomProperty>
+
+    <!-- Mesmos itens, em outra ordem na versão nova -->
+    <CustomProperty>
+        <Name>ORDEM_ALTERADA</Name>
+        <TableName>CPE_LISTAS</TableName>
+        <Text>Ordem alterada</Text>
+        <Description>Ordem alterada</Description>
+        <Type>String</Type>
+        <Control>DropDownList</Control>
+        <ListItems>Alta;Media;Baixa</ListItems>
+    </CustomProperty>
+
+    <!-- Lista fixa que fica sem nenhum item na versão nova -->
+    <CustomProperty>
+        <Name>LISTA_ESVAZIADA</Name>
+        <TableName>CPE_LISTAS</TableName>
+        <Text>Lista esvaziada</Text>
+        <Description>Lista esvaziada</Description>
+        <Type>String</Type>
+        <Control>DropDownList</Control>
+        <ListItems>Sim;Nao</ListItems>
+    </CustomProperty>
+
+    <!-- O exemplo clássico: era Decimal e vira String -->
+    <CustomProperty>
+        <Name>DECIMAL_PARA_STRING</Name>
+        <TableName>CPE_LISTAS</TableName>
+        <Text>Decimal para string</Text>
+        <Description>Decimal para string</Description>
+        <Type>Decimal</Type>
+        <Control>TextBox</Control>
+    </CustomProperty>
+
+    <!-- Campo igual nas duas versões, com lista por script: não pode aparecer como alterado -->
+    <CustomProperty>
+        <Name>SCRIPT_ESTAVEL</Name>
+        <TableName>CPE_LISTAS</TableName>
+        <Text>Script estável</Text>
+        <Description>Script estável</Description>
+        <Type>String</Type>
+        <Control>DropDownList</Control>
+        <LookupScript>Itens = DB.ExecuteDataTable("SELECT ID, NOME FROM FILIAL")</LookupScript>
+    </CustomProperty>
+
+    <!-- Classe de negócio sem <Text>: o nome vem do último trecho do nome técnico. Não muda. -->
+    <CustomProperty>
+        <Name>CLASSE_SEM_TEXTO</Name>
+        <TableName>CPE_LISTAS</TableName>
+        <Text>Classe sem texto</Text>
+        <Description>Classe sem texto</Description>
+        <Type>String</Type>
+        <Control>DropDownList</Control>
+        <ClassReference>
+            <Name>Venki.Supravizio.Recurso.Orgao, Supravizio</Name>
+        </ClassReference>
+    </CustomProperty>
+
+    <Figuras>
+        <Figura>
+            <Atividade>
+                <Tipo>Tarefa</Tipo>
+                <Descricao>Preencher listas</Descricao>
+                <Operacoes>
+                    <OperacaoAtividade>
+                        <Campos>
+                            <CampoPreenchimento><NomeCustomizado>FIXA_PARA_SCRIPT</NomeCustomizado></CampoPreenchimento>
+                            <CampoPreenchimento><NomeCustomizado>SCRIPT_ALTERADO</NomeCustomizado></CampoPreenchimento>
+                            <CampoPreenchimento><NomeCustomizado>SCRIPT_MESMO_CODIGO</NomeCustomizado></CampoPreenchimento>
+                            <CampoPreenchimento><NomeCustomizado>SCRIPT_SO_COMENTARIO</NomeCustomizado></CampoPreenchimento>
+                            <CampoPreenchimento><NomeCustomizado>COMENTARIO_PARA_SCRIPT</NomeCustomizado></CampoPreenchimento>
+                            <CampoPreenchimento><NomeCustomizado>SCRIPT_PARA_FIXA</NomeCustomizado></CampoPreenchimento>
+                            <CampoPreenchimento><NomeCustomizado>CLASSE_ALTERADA</NomeCustomizado></CampoPreenchimento>
+                            <CampoPreenchimento><NomeCustomizado>ORDEM_ALTERADA</NomeCustomizado></CampoPreenchimento>
+                            <CampoPreenchimento><NomeCustomizado>LISTA_ESVAZIADA</NomeCustomizado></CampoPreenchimento>
+                            <CampoPreenchimento><NomeCustomizado>DECIMAL_PARA_STRING</NomeCustomizado></CampoPreenchimento>
+                            <CampoPreenchimento><NomeCustomizado>SCRIPT_ESTAVEL</NomeCustomizado></CampoPreenchimento>
+                            <CampoPreenchimento><NomeCustomizado>CLASSE_SEM_TEXTO</NomeCustomizado></CampoPreenchimento>
+                        </Campos>
+                    </OperacaoAtividade>
+                </Operacoes>
+            </Atividade>
+        </Figura>
+    </Figuras>
+</ModeloImportacaoXml>

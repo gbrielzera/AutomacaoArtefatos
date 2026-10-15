@@ -192,6 +192,25 @@ Incluídos: Transporte
 Removidos: Obsoleto
 ```
 
+### Origem da lista de itens
+
+Nem toda lista é fixa. Um campo de seleção pode obter seus itens de três formas, e a comparação reconhece as três:
+
+| Origem | Como aparece no XML | O que o artefato informa |
+| --- | --- | --- |
+| Lista fixa | `<ListItems>` separados por `;` | itens incluídos, removidos ou mudança de ordem |
+| Script | `<LookupScript>` (em geral um `SELECT`) | se o script de carga foi alterado |
+| Classe de negócio | `<ClassReference>` | a classe de origem e se ela foi trocada |
+
+Os itens carregados por script não podem ser enumerados a partir do XML, então o artefato indica apenas que o script mudou. Quando a origem muda (por exemplo, uma lista fixa que passou a vir de script), a coluna mostra o estado atual e uma linha `Antes: ...`:
+
+```text
+Itens carregados por script
+Antes: lista fixa (Contrato; Aditivo)
+```
+
+Scripts de carga que só contêm comentários (como um `SELECT` comentado) não contam como origem de lista, e diferenças de fim de linha ou de espaços à direita entre duas exportações não são tratadas como alteração.
+
 ### Nome do arquivo gerado
 
 Nenhum dos dois artefatos leva o número da versão no nome. O que os distingue é o prefixo, de modo que os dois podem conviver na mesma pasta de destino:

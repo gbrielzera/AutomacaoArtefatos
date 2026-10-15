@@ -17,6 +17,7 @@ import sys
 import json
 import logging
 from datetime import datetime
+from typing import Optional
 
 try:
     from tkinterdnd2 import TkinterDnD, DND_FILES
@@ -280,6 +281,12 @@ def extrair_propriedades_campos(root):
                 # "Lista de Itens" da tabela de Campos alterados.
                 "controle": get_texto(prop, "Control"),
                 "lista_itens": get_texto(prop, "ListItems"),
+                # Nem toda lista é fixa: o combo também pode carregar os itens por script
+                # (<LookupScript>, em geral um SELECT) ou de uma classe de negócio
+                # (<ClassReference>). Esses itens não dá para enumerar no XML, então guardamos
+                # a origem para a comparação conseguir dizer que ela mudou.
+                "lookup_script": _extrair_script_de_lookup(prop),
+                "classe_referencia": _extrair_classe_referencia(prop),
                 # Campos de grade (Type='RecordList') declaram suas colunas aqui.
                 # Serve para dar nome legível às colunas ao descrever os scripts da grid,
                 # já que o <CampoPreenchimentoRegistro> só traz o nome técnico da coluna.
@@ -287,6 +294,68 @@ def extrair_propriedades_campos(root):
             }
 
     return propriedades
+
+
+# Linhas que o Supravizio coloca em todo script de lookup, até no que está vazio.
+_LINHAS_PADRAO_DE_SCRIPT = ("import clr", "from System import *")
+
+
+def normalizar_script(texto: str) -> str:
+    """
+    Padroniza quebras de linha e espaços à direita de um script.
+
+    Serve para comparar o mesmo script em duas exportações sem acusar mudança só porque
+    o fim de linha ou um espaço sobrando é diferente.
+
+    Args:
+        texto: Código do script como veio do XML.
+
+    Returns:
+        str: O mesmo código com '\\n' como quebra, sem espaços à direita e sem bordas vazias.
+    """
+    linhas = texto.replace("\r\n", "\n").replace("\r", "\n").split("\n")
+    return "\n".join(linha.rstrip() for linha in linhas).strip()
+
+
+def script_tem_codigo_ativo(texto: str) -> bool:
+    """
+    Informa se o script faz algo de fato, ignorando comentários, linhas em branco e os
+    imports que o Supravizio insere em todo script.
+
+    Args:
+        texto: Código do script.
+
+    Returns:
+        bool: False para script vazio ou que só tem comentário (ex.: um SELECT comentado).
+    """
+    for linha in texto.splitlines():
+        limpa = linha.strip()
+        if limpa and not limpa.startswith("#") and limpa not in _LINHAS_PADRAO_DE_SCRIPT:
+            return True
+    return False
+
+
+def _extrair_script_de_lookup(prop: ET.Element) -> str:
+    """Script que carrega os itens do campo, normalizado; vazio se não houver código ativo."""
+    script = normalizar_script(get_texto(prop, "LookupScript"))
+    return script if script_tem_codigo_ativo(script) else ""
+
+
+def _extrair_classe_referencia(prop: ET.Element) -> str:
+    """
+    Nome legível da classe de negócio de onde o campo busca seus itens (ex.: 'Área').
+
+    Usa o <Text> da referência e, na falta dele, o último trecho do nome técnico
+    ('Venki.Supravizio.Recurso.Orgao, Supraviz...' vira 'Orgao').
+    """
+    referencia = prop.find("ClassReference")
+    if referencia is None:
+        return ""
+    texto = get_texto(referencia, "Text")
+    if texto:
+        return texto
+    nome_tecnico = get_texto(referencia, "Name")
+    return nome_tecnico.split(",")[0].strip().rsplit(".", 1)[-1]
 
 
 def _extrair_colunas_registro(prop):
@@ -503,6 +572,8 @@ def extrair_dados_xml(xml_path, logger):
                                 "tabela": tabela_nome,
                                 "controle": prop_campo.get("controle", ""),
                                 "lista_itens": prop_campo.get("lista_itens", ""),
+                                "lookup_script": prop_campo.get("lookup_script", ""),
+                                "classe_referencia": prop_campo.get("classe_referencia", ""),
                             })
                             campos_vistos.add(nome_c)
 
@@ -683,7 +754,10 @@ def comparar_dados(dados_antes, dados_depois, logger=None):
         "campos": _comparar_colecao(
             dados_antes["campos"], dados_depois["campos"],
             chave=lambda c: c["nome"],
-            campos_comparados=["descricao", "tipo", "tabela", "controle", "lista_itens"],
+            campos_comparados=[
+                "descricao", "tipo", "tabela", "controle",
+                "lista_itens", "lookup_script", "classe_referencia",
+            ],
         ),
         "anexos": _comparar_colecao(
             dados_antes["anexos"], dados_depois["anexos"],
@@ -714,25 +788,92 @@ def comparar_dados(dados_antes, dados_depois, logger=None):
     return comparacao
 
 
-def descrever_mudanca_lista(item_antes, item_depois):
+def _origem_da_lista(campo: Optional[dict]) -> tuple:
     """
-    Monta o texto da coluna 'Lista de Itens': as opções da versão atual e, quando a
-    lista mudou, quais opções entraram e quais saíram.
-    """
-    itens_depois = separar_lista_itens((item_depois or {}).get("lista_itens", ""))
-    itens_antes = separar_lista_itens((item_antes or {}).get("lista_itens", ""))
+    Diz de onde o campo tira os itens da lista.
 
-    if not itens_depois and not itens_antes:
+    Um campo tem uma só origem por vez. Se o XML trouxer mais de uma, vale a ordem
+    lista fixa > script > classe, que é a ordem em que o Supravizio as preenche; nos XMLs
+    de exemplo essas origens nunca aparecem juntas num campo usado em fluxo.
+
+    Args:
+        campo: Dicionário do campo como devolvido por extrair_dados_xml (ou None).
+
+    Returns:
+        tuple: ('fixa', [itens]), ('script', código), ('classe', nome) ou ('nenhuma', None).
+    """
+    campo = campo or {}
+    itens = separar_lista_itens(campo.get("lista_itens", ""))
+    if itens:
+        return "fixa", itens
+    if campo.get("lookup_script"):
+        return "script", campo["lookup_script"]
+    if campo.get("classe_referencia"):
+        return "classe", campo["classe_referencia"]
+    return "nenhuma", None
+
+
+def _resumir_origem_da_lista(origem: str, detalhe) -> str:
+    """Frase curta com a origem da lista, para a linha 'Antes: ...' do artefato."""
+    if origem == "fixa":
+        return f"lista fixa ({'; '.join(detalhe)})"
+    if origem == "script":
+        return "itens carregados por script"
+    if origem == "classe":
+        return f"itens da classe {detalhe}"
+    return "sem lista de itens"
+
+
+def descrever_mudanca_lista(item_antes: Optional[dict], item_depois: Optional[dict]) -> str:
+    """
+    Monta o texto da coluna 'Lista de Itens' da tabela de Campos alterados.
+
+    A primeira linha mostra a lista como está na versão nova. As demais dizem o que
+    mudou, de acordo com a origem dos itens:
+
+    * lista fixa (separada por ';'): quais itens entraram, quais saíram, ou se só a ordem mudou;
+    * script: os itens vêm de uma consulta e não dá para listá-los, então só se informa se o
+      script de carga foi alterado;
+    * classe de negócio: a classe de origem, e se ela foi trocada;
+    * origem diferente da anterior (ex.: lista fixa que passou a vir de script): uma linha
+      'Antes: ...' com o que existia.
+
+    Args:
+        item_antes: Campo na versão anterior (ou None).
+        item_depois: Campo na versão nova (ou None).
+
+    Returns:
+        str: Texto de uma ou mais linhas; vazio se o campo não tem lista em nenhuma versão.
+    """
+    origem_antes, detalhe_antes = _origem_da_lista(item_antes)
+    origem_depois, detalhe_depois = _origem_da_lista(item_depois)
+
+    if origem_antes == "nenhuma" and origem_depois == "nenhuma":
         return ""
 
-    partes = ["; ".join(itens_depois) if itens_depois else "(sem itens)"]
+    estado_atual = {
+        "fixa": lambda: "; ".join(detalhe_depois),
+        "script": lambda: "Itens carregados por script",
+        "classe": lambda: f"Itens da classe {detalhe_depois}",
+        "nenhuma": lambda: "(sem itens)",
+    }[origem_depois]()
+    partes = [estado_atual]
 
-    incluidos = [i for i in itens_depois if i not in itens_antes]
-    removidos = [i for i in itens_antes if i not in itens_depois]
-    if incluidos:
-        partes.append("Incluídos: " + "; ".join(incluidos))
-    if removidos:
-        partes.append("Removidos: " + "; ".join(removidos))
+    if origem_antes != origem_depois:
+        partes.append("Antes: " + _resumir_origem_da_lista(origem_antes, detalhe_antes))
+    elif origem_depois == "fixa":
+        incluidos = [i for i in detalhe_depois if i not in detalhe_antes]
+        removidos = [i for i in detalhe_antes if i not in detalhe_depois]
+        if incluidos:
+            partes.append("Incluídos: " + "; ".join(incluidos))
+        if removidos:
+            partes.append("Removidos: " + "; ".join(removidos))
+        if not incluidos and not removidos and detalhe_antes != detalhe_depois:
+            partes.append("Ordem dos itens alterada")
+    elif origem_depois == "script" and detalhe_antes != detalhe_depois:
+        partes.append("Script de carga dos itens alterado")
+    elif origem_depois == "classe" and detalhe_antes != detalhe_depois:
+        partes.append(f"Classe de origem alterada: {detalhe_antes} → {detalhe_depois}")
 
     return "\n".join(partes)
 

@@ -1,0 +1,167 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Versão NOVA do fluxo usado para testar a tabela "Campos alterados".
+  Compare com comparacao_listas_antes.xml, que traz o comentário de cada situação.
+-->
+<ModeloImportacaoXml>
+    <NomeSubProcesso>Fluxo Listas</NomeSubProcesso>
+
+    <CustomProperty>
+        <Name>FIXA_PARA_SCRIPT</Name>
+        <TableName>CPE_LISTAS</TableName>
+        <Text>Fixa para script</Text>
+        <Description>Fixa para script</Description>
+        <Type>String</Type>
+        <Control>DropDownList</Control>
+        <LookupScript>Itens = DB.ExecuteDataTable("SELECT NOME FROM TIPO_CONTRATO")</LookupScript>
+    </CustomProperty>
+
+    <CustomProperty>
+        <Name>SCRIPT_ALTERADO</Name>
+        <TableName>CPE_LISTAS</TableName>
+        <Text>Script alterado</Text>
+        <Description>Script alterado</Description>
+        <Type>String</Type>
+        <Control>DropDownList</Control>
+        <LookupScript>import clr
+from System import *
+# INICIO SCRIPT USUARIO
+Itens = DB.ExecuteDataTable("SELECT ID, NOME FROM PESSOA WHERE ATIVO = 1")
+# FIM SCRIPT USUARIO</LookupScript>
+    </CustomProperty>
+
+    <!-- Mesmo código de antes: espaço sobrando no fim das linhas e fim de linha CRLF (&#13;) -->
+    <CustomProperty>
+        <Name>SCRIPT_MESMO_CODIGO</Name>
+        <TableName>CPE_LISTAS</TableName>
+        <Text>Script mesmo código</Text>
+        <Description>Script mesmo código</Description>
+        <Type>String</Type>
+        <Control>DropDownList</Control>
+        <LookupScript>import clr   &#13;
+from System import *  &#13;
+Itens = DB.ExecuteDataTable("SELECT ID, NOME FROM UNIDADE")   </LookupScript>
+    </CustomProperty>
+
+    <CustomProperty>
+        <Name>SCRIPT_SO_COMENTARIO</Name>
+        <TableName>CPE_LISTAS</TableName>
+        <Text>Script só comentário</Text>
+        <Description>Script só comentário</Description>
+        <Type>String</Type>
+        <Control>TextBox</Control>
+        <LookupScript>import clr
+from System import *
+#Itens = DB.ExecuteDataTable("SELECT NOME_CIDADE FROM CIDADE_V")</LookupScript>
+    </CustomProperty>
+
+    <CustomProperty>
+        <Name>COMENTARIO_PARA_SCRIPT</Name>
+        <TableName>CPE_LISTAS</TableName>
+        <Text>Comentário para script</Text>
+        <Description>Comentário para script</Description>
+        <Type>String</Type>
+        <Control>DropDownList</Control>
+        <LookupScript>Itens = DB.ExecuteDataTable("SELECT NOME FROM CIDADE")</LookupScript>
+    </CustomProperty>
+
+    <CustomProperty>
+        <Name>SCRIPT_PARA_FIXA</Name>
+        <TableName>CPE_LISTAS</TableName>
+        <Text>Script para fixa</Text>
+        <Description>Script para fixa</Description>
+        <Type>String</Type>
+        <Control>DropDownList</Control>
+        <ListItems>Aberto;Fechado</ListItems>
+    </CustomProperty>
+
+    <CustomProperty>
+        <Name>CLASSE_ALTERADA</Name>
+        <TableName>CPE_LISTAS</TableName>
+        <Text>Classe alterada</Text>
+        <Description>Classe alterada</Description>
+        <Type>String</Type>
+        <Control>DropDownList</Control>
+        <ClassReference>
+            <Name>Venki.Supravizio.Recurso.Filial, Supravizio</Name>
+            <Text>Filial</Text>
+        </ClassReference>
+    </CustomProperty>
+
+    <CustomProperty>
+        <Name>ORDEM_ALTERADA</Name>
+        <TableName>CPE_LISTAS</TableName>
+        <Text>Ordem alterada</Text>
+        <Description>Ordem alterada</Description>
+        <Type>String</Type>
+        <Control>DropDownList</Control>
+        <ListItems>Baixa;Media;Alta</ListItems>
+    </CustomProperty>
+
+    <CustomProperty>
+        <Name>LISTA_ESVAZIADA</Name>
+        <TableName>CPE_LISTAS</TableName>
+        <Text>Lista esvaziada</Text>
+        <Description>Lista esvaziada</Description>
+        <Type>String</Type>
+        <Control>DropDownList</Control>
+    </CustomProperty>
+
+    <CustomProperty>
+        <Name>DECIMAL_PARA_STRING</Name>
+        <TableName>CPE_LISTAS</TableName>
+        <Text>Decimal para string</Text>
+        <Description>Decimal para string</Description>
+        <Type>String</Type>
+        <Control>TextBox</Control>
+    </CustomProperty>
+
+    <CustomProperty>
+        <Name>SCRIPT_ESTAVEL</Name>
+        <TableName>CPE_LISTAS</TableName>
+        <Text>Script estável</Text>
+        <Description>Script estável</Description>
+        <Type>String</Type>
+        <Control>DropDownList</Control>
+        <LookupScript>Itens = DB.ExecuteDataTable("SELECT ID, NOME FROM FILIAL")</LookupScript>
+    </CustomProperty>
+
+    <CustomProperty>
+        <Name>CLASSE_SEM_TEXTO</Name>
+        <TableName>CPE_LISTAS</TableName>
+        <Text>Classe sem texto</Text>
+        <Description>Classe sem texto</Description>
+        <Type>String</Type>
+        <Control>DropDownList</Control>
+        <ClassReference>
+            <Name>Venki.Supravizio.Recurso.Orgao, Supravizio</Name>
+        </ClassReference>
+    </CustomProperty>
+
+    <Figuras>
+        <Figura>
+            <Atividade>
+                <Tipo>Tarefa</Tipo>
+                <Descricao>Preencher listas</Descricao>
+                <Operacoes>
+                    <OperacaoAtividade>
+                        <Campos>
+                            <CampoPreenchimento><NomeCustomizado>FIXA_PARA_SCRIPT</NomeCustomizado></CampoPreenchimento>
+                            <CampoPreenchimento><NomeCustomizado>SCRIPT_ALTERADO</NomeCustomizado></CampoPreenchimento>
+                            <CampoPreenchimento><NomeCustomizado>SCRIPT_MESMO_CODIGO</NomeCustomizado></CampoPreenchimento>
+                            <CampoPreenchimento><NomeCustomizado>SCRIPT_SO_COMENTARIO</NomeCustomizado></CampoPreenchimento>
+                            <CampoPreenchimento><NomeCustomizado>COMENTARIO_PARA_SCRIPT</NomeCustomizado></CampoPreenchimento>
+                            <CampoPreenchimento><NomeCustomizado>SCRIPT_PARA_FIXA</NomeCustomizado></CampoPreenchimento>
+                            <CampoPreenchimento><NomeCustomizado>CLASSE_ALTERADA</NomeCustomizado></CampoPreenchimento>
+                            <CampoPreenchimento><NomeCustomizado>ORDEM_ALTERADA</NomeCustomizado></CampoPreenchimento>
+                            <CampoPreenchimento><NomeCustomizado>LISTA_ESVAZIADA</NomeCustomizado></CampoPreenchimento>
+                            <CampoPreenchimento><NomeCustomizado>DECIMAL_PARA_STRING</NomeCustomizado></CampoPreenchimento>
+                            <CampoPreenchimento><NomeCustomizado>SCRIPT_ESTAVEL</NomeCustomizado></CampoPreenchimento>
+                            <CampoPreenchimento><NomeCustomizado>CLASSE_SEM_TEXTO</NomeCustomizado></CampoPreenchimento>
+                        </Campos>
+                    </OperacaoAtividade>
+                </Operacoes>
+            </Atividade>
+        </Figura>
+    </Figuras>
+</ModeloImportacaoXml>

@@ -124,6 +124,149 @@ def test_separar_lista_itens_ignora_vazios(mod):
 
 
 # --------------------------------------------------------------------------
+# Campos alterados: troca de tipo e origem da lista de itens
+#
+# comparacao_listas_*.xml traz um campo para cada situação. A lista de um combo pode ser
+# fixa (itens separados por ';'), carregada por script (<LookupScript>, em geral um SELECT)
+# ou vir de uma classe de negócio (<ClassReference>). Os itens de um script não dá para
+# enumerar no XML, então o artefato só informa se o script mudou.
+# --------------------------------------------------------------------------
+@pytest.fixture
+def comp_listas(mod, logger, fixture_path):
+    antes = mod.extrair_dados_xml(fixture_path("comparacao_listas_antes.xml"), logger)
+    depois = mod.extrair_dados_xml(fixture_path("comparacao_listas_depois.xml"), logger)
+    return mod.comparar_dados(antes, depois, logger)
+
+
+@pytest.fixture
+def linhas_lista(mod, comp_listas):
+    """Devolve as linhas da coluna 'Lista de Itens' de um campo alterado."""
+    def _linhas(nome):
+        m = _por_nome(comp_listas["campos"]["modificados"])[nome]
+        return mod.descrever_mudanca_lista(m["antes"], m["depois"]).splitlines()
+    return _linhas
+
+
+def test_decimal_que_virou_string_aparece_com_a_transicao(mod, comp_listas):
+    alterado = _por_nome(comp_listas["campos"]["modificados"])["DECIMAL_PARA_STRING"]
+
+    assert alterado["diferencas"] == ["tipo"]
+    assert mod.descrever_mudanca_tipo(alterado["antes"], alterado["depois"]) == "Decimal → String"
+    # não é campo de lista: a coluna fica vazia
+    assert mod.descrever_mudanca_lista(alterado["antes"], alterado["depois"]) == ""
+
+
+def test_lista_fixa_que_passou_a_vir_de_script(comp_listas, linhas_lista):
+    alterado = _por_nome(comp_listas["campos"]["modificados"])["FIXA_PARA_SCRIPT"]
+
+    assert "lookup_script" in alterado["diferencas"]
+    assert linhas_lista("FIXA_PARA_SCRIPT") == [
+        "Itens carregados por script",
+        "Antes: lista fixa (Contrato; Aditivo)",
+    ]
+
+
+def test_script_de_carga_alterado_e_detectado(comp_listas, linhas_lista):
+    """Regressão: mudar o SELECT que alimenta o combo não aparecia em 'Campos alterados'."""
+    alterado = _por_nome(comp_listas["campos"]["modificados"])["SCRIPT_ALTERADO"]
+
+    assert alterado["diferencas"] == ["lookup_script"]
+    assert linhas_lista("SCRIPT_ALTERADO") == [
+        "Itens carregados por script",
+        "Script de carga dos itens alterado",
+    ]
+
+
+def test_script_com_mesmo_codigo_nao_acusa_mudanca(comp_listas):
+    """Espaço sobrando e fim de linha CRLF diferentes entre as exportações não são mudança."""
+    nomes = [m["chave"] for m in comp_listas["campos"]["modificados"]]
+
+    assert "SCRIPT_MESMO_CODIGO" not in nomes
+    assert "SCRIPT_ESTAVEL" not in nomes
+
+
+def test_script_so_com_comentario_nao_conta_como_lista(comp_listas):
+    """
+    Um SELECT comentado não carrega item algum: trocar o texto do comentário não é
+    alteração de lista, e o campo nem chega a ter 'script de carga'.
+    """
+    nomes = [m["chave"] for m in comp_listas["campos"]["modificados"]]
+
+    assert "SCRIPT_SO_COMENTARIO" not in nomes
+
+
+def test_comentario_que_ganhou_codigo_passa_a_ser_lista_por_script(comp_listas, linhas_lista):
+    assert linhas_lista("COMENTARIO_PARA_SCRIPT") == [
+        "Itens carregados por script",
+        "Antes: sem lista de itens",
+    ]
+
+
+def test_script_que_virou_lista_fixa(comp_listas, linhas_lista):
+    alterado = _por_nome(comp_listas["campos"]["modificados"])["SCRIPT_PARA_FIXA"]
+
+    assert set(alterado["diferencas"]) == {"lista_itens", "lookup_script"}
+    assert linhas_lista("SCRIPT_PARA_FIXA") == [
+        "Aberto; Fechado",
+        "Antes: itens carregados por script",
+    ]
+
+
+def test_classe_de_origem_trocada(comp_listas, linhas_lista):
+    alterado = _por_nome(comp_listas["campos"]["modificados"])["CLASSE_ALTERADA"]
+
+    assert alterado["diferencas"] == ["classe_referencia"]
+    assert linhas_lista("CLASSE_ALTERADA") == [
+        "Itens da classe Filial",
+        "Classe de origem alterada: Área → Filial",
+    ]
+
+
+def test_classe_sem_texto_usa_o_ultimo_trecho_do_nome_tecnico(comp_listas, mod, logger, fixture_path):
+    depois = mod.extrair_dados_xml(fixture_path("comparacao_listas_depois.xml"), logger)
+    campo = next(c for c in depois["campos"] if c["nome"] == "CLASSE_SEM_TEXTO")
+
+    assert campo["classe_referencia"] == "Orgao"
+    assert "CLASSE_SEM_TEXTO" not in [m["chave"] for m in comp_listas["campos"]["modificados"]]
+
+
+def test_mesmos_itens_em_outra_ordem_sao_sinalizados(linhas_lista):
+    """Sem isso a linha apareceria sem nenhuma indicação visível do que mudou."""
+    assert linhas_lista("ORDEM_ALTERADA") == [
+        "Baixa; Media; Alta",
+        "Ordem dos itens alterada",
+    ]
+
+
+def test_lista_fixa_esvaziada(linhas_lista):
+    assert linhas_lista("LISTA_ESVAZIADA") == [
+        "(sem itens)",
+        "Antes: lista fixa (Sim; Nao)",
+    ]
+
+
+def test_lista_fixa_continua_mostrando_incluidos_e_removidos(mod):
+    """O comportamento antigo da lista fixa não pode mudar."""
+    antes = {"lista_itens": "A;B;C"}
+    depois = {"lista_itens": "A;C;D"}
+
+    assert mod.descrever_mudanca_lista(antes, depois).splitlines() == [
+        "A; C; D", "Incluídos: D", "Removidos: B",
+    ]
+
+
+def test_normalizar_script_ignora_fim_de_linha_e_espaco_a_direita(mod):
+    assert mod.normalizar_script("a = 1  \r\nb = 2\t\r\n") == "a = 1\nb = 2"
+    assert mod.normalizar_script("   ") == ""
+
+
+def test_script_so_com_boilerplate_ou_comentario_nao_tem_codigo_ativo(mod):
+    assert mod.script_tem_codigo_ativo("import clr\nfrom System import *\n# INICIO SCRIPT USUARIO") is False
+    assert mod.script_tem_codigo_ativo("") is False
+    assert mod.script_tem_codigo_ativo("import clr\nItens = DB.ExecuteDataTable('SELECT 1')") is True
+
+
+# --------------------------------------------------------------------------
 # Scripts
 # --------------------------------------------------------------------------
 def test_scripts_incluidos_removidos_e_alterados(comp):
